@@ -1,0 +1,10 @@
+# Raw GeoMx files (GEO GSE316381) and everything the notebooks write
+DATA_INPUT/dccs/
+DATA_INPUT/pkcs/
+OUTPUT/
+.Rhistory
+.RData
+.Rproj.user/
+
+# Internal notes on the code layout (kept in the private repository)
+Functions_GitHub/README.md

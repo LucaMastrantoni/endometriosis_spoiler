@@ -1,0 +1,291 @@
+---
+title: "01_Preprocessing"
+subtitle: "GeoMx import, segment and probe QC, limit of quantification and filtering (Supplementary Figure 2)"
+author: "Luca Mastrantoni"
+output: html_document
+---
+
+Input: `DATA_INPUT/dccs`, `DATA_INPUT/pkcs`, `DATA_INPUT/annotation/ANNOTATION_FILE_public.xlsx`
+Output: `OUTPUT/rds/target_demoData.rds`; Supp. Fig. 2 (FigureS2, S2a-S2i) in `OUTPUT/FIGURES/Supplementary/FigureS2` and `OUTPUT/Excel Files/Supplementary/FigureS2`
+
+```{r setup, message=FALSE}
+source("Setup.R")
+```
+
+##### Load data
+```{r}
+DCCFiles <- dir(file.path(path_input, "dccs"), pattern = ".dcc$", full.names = TRUE, recursive = TRUE)
+# Well E09 of plate D is excluded from the analysis
+DCCFiles <- DCCFiles[basename(DCCFiles) != "DSP-1001660015487-D-E09.dcc"]
+
+PKCFiles <- unzip(exdir = tempdir(),
+                  zipfile = dir(file.path(path_input, "pkcs"), pattern = ".zip$", full.names = TRUE, recursive = TRUE))
+
+SampleAnnotationFile <- file.path(path_input, "annotation", "ANNOTATION_FILE_public.xlsx")
+
+demoData0 <- readNanoStringGeoMxSet(dccFiles = DCCFiles,
+                                    pkcFiles = PKCFiles[1],
+                                    phenoDataFile = SampleAnnotationFile,
+                                    phenoDataSheet = "Foglio1",
+                                    phenoDataDccColName = "Sample_ID",
+                                    protocolDataColNames = c("roi"),
+                                    experimentDataColNames = NULL)
+modules <- gsub(".pkc", "", annotation(demoData0))
+```
+
+##### Segment QC
+```{r}
+# Shift counts to one
+demoData <- shiftCountsOne(demoData0, useDALogic = TRUE)
+
+QC_params <- list(minSegmentReads = 1000, # Minimum number of reads
+                  percentTrimmed = 80,    # Minimum % of reads trimmed
+                  percentStitched = 80,   # Minimum % of reads stitched
+                  percentAligned = 75,    # Minimum % of reads aligned
+                  percentSaturation = 50, # Minimum sequencing saturation
+                  minNegativeCount = 1,   # Minimum negative control counts
+                  maxNTCCount = 1000,     # Maximum counts observed in NTC well
+                  minNuclei = 20,         # Minimum # of nuclei estimated
+                  minArea = 500)          # Minimum segment area
+demoData <- setSegmentQCFlags(demoData, qcCutoffs = QC_params)
+
+# Collate QC results
+QCResults <- protocolData(demoData)[["QCFlags"]]
+flag_columns <- colnames(QCResults)
+QC_Summary <- data.frame(Pass = colSums(!QCResults[, flag_columns]),
+                         Warning = colSums(QCResults[, flag_columns]))
+QCResults$QCStatus <- apply(QCResults, 1L, function(x) ifelse(sum(x) == 0L, "PASS", "WARNING"))
+QC_Summary["TOTAL FLAGS", ] <- c(sum(QCResults[, "QCStatus"] == "PASS"),
+                                 sum(QCResults[, "QCStatus"] == "WARNING"))
+QC_Summary
+dim(demoData)
+```
+
+```{r}
+# Negative-probe geometric means per module (used for the LOQ below)
+negativeGeoMeans <- esBy(negativeControlSubset(demoData),
+                         GROUP = "Module",
+                         FUN = function(x) assayDataApply(x, MARGIN = 2, FUN = ngeoMean, elt = "exprs"))
+protocolData(demoData)[["NegGeoMean"]] <- negativeGeoMeans
+```
+
+```{r}
+# Supplementary Figure 2a-f: QC metrics per segment
+QC_histogram <- function(assay_data, annotation, fill_by, thr, scale_trans = NULL) {
+  plt <- ggplot(assay_data, aes_string(x = paste0("unlist(`", annotation, "`)"), fill = fill_by)) +
+    geom_histogram(bins = 50) +
+    geom_vline(xintercept = thr, lty = "dashed", color = "black") +
+    theme_bw() + guides(fill = "none") +
+    facet_wrap(as.formula(paste("~", fill_by)), nrow = 4) +
+    labs(x = annotation, y = "Segments, #", title = annotation)
+  if (!is.null(scale_trans)) plt <- plt + scale_x_continuous(trans = scale_trans)
+  plt
+}
+
+col_by <- "Segment"
+a <- QC_histogram(sData(demoData), "Trimmed (%)", col_by, 80) +
+  scale_fill_manual(values = Segment)
+b <- QC_histogram(sData(demoData), "Stitched (%)", col_by, 80) +
+  scale_fill_manual(values = Segment)
+c <- QC_histogram(sData(demoData), "Aligned (%)", col_by, 75) +
+  scale_fill_manual(values = Segment)
+d <- QC_histogram(sData(demoData), "Saturated (%)", col_by, 50) +
+  labs(title = "Sequencing Saturation (%)", x = "Sequencing Saturation (%)") +
+  scale_fill_manual(values = Segment)
+e <- QC_histogram(sData(demoData), "area", col_by, 500, scale_trans = "log10") +
+  labs(title = "Area", x = "Area (µm²)") +
+  scale_fill_manual(values = Segment)
+f <- QC_histogram(sData(demoData), "nuclei", col_by, 20) +
+  labs(title = "Nuclei", x = "Nuclei (n)") +
+  scale_fill_manual(values = Segment)
+
+patch <- plot_grid(a, b, c, d, e, f, labels = "auto", label_size = letter_size(14), ncol = 3)
+
+# Source data: one QC metric per AOI and panel
+qc_metrics <- c(a = "Trimmed (%)", b = "Stitched (%)", c = "Aligned (%)", d = "Saturated (%)", e = "area", f = "nuclei")
+for (p in names(qc_metrics)) {
+  qc_df <- data.frame(AOI = rownames(sData(demoData)), Segment = sData(demoData)$Segment,
+                      Value = unlist(sData(demoData)[[qc_metrics[[p]]]]))
+  names(qc_df)[3] <- qc_metrics[[p]]
+  save_source_data(qc_df, paste0("FigureS2", p))
+}
+```
+
+##### Probe QC
+```{r}
+# A probe is removed globally if the geometric mean of its counts across segments divided by the
+# geometric mean of all probes for the target is < 0.1, or if it is a Grubb's outlier in >= 20% of segments.
+demoData <- setBioProbeQCFlags(demoData,
+                               qcCutoffs = list(minProbeRatio = 0.1, percentFailGrubbs = 20),
+                               removeLocalOutliers = FALSE)
+
+demoData <- subset(demoData,
+                   fData(demoData)[["QCFlags"]][, c("LowProbeRatio")] == FALSE &
+                     fData(demoData)[["QCFlags"]][, c("GlobalGrubbsOutlier")] == FALSE)
+dim(demoData)
+
+# Collapse probes to gene-level counts
+length(unique(featureData(demoData)[["TargetName"]]))
+target_demoData <- aggregateCounts(demoData)
+dim(target_demoData)
+```
+
+##### Limit of quantification
+```{r}
+cutoff <- 2  # SD above the negative-probe geometric mean
+minLOQ <- 2  # minimum LOQ
+
+LOQ <- data.frame(row.names = colnames(target_demoData))
+for (module in modules) {
+  vars <- paste0(c("NegGeoMean_", "NegGeoSD_"), module)
+  if (all(vars[1:2] %in% colnames(pData(target_demoData)))) {
+    LOQ[, module] <- pmax(minLOQ, pData(target_demoData)[, vars[1]] * pData(target_demoData)[, vars[2]]^cutoff)
+  }
+}
+pData(target_demoData)$LOQ <- LOQ
+
+LOQ_Mat <- c()
+for (module in modules) {
+  ind <- fData(target_demoData)$Module == module
+  Mat_i <- t(esApply(target_demoData[ind, ], MARGIN = 1, FUN = function(x) x > LOQ[, module]))
+  LOQ_Mat <- rbind(LOQ_Mat, Mat_i)
+}
+LOQ_Mat <- LOQ_Mat[fData(target_demoData)$TargetName, ]  # same order as the object
+
+pData(target_demoData)$GenesDetected <- colSums(LOQ_Mat, na.rm = TRUE)
+pData(target_demoData)$GeneDetectionRate <- pData(target_demoData)$GenesDetected / nrow(target_demoData)
+pData(target_demoData)$DetectionThreshold <- cut(pData(target_demoData)$GeneDetectionRate,
+                                                 breaks = c(0, 0.01, 0.05, 0.1, 0.15, 1),
+                                                 labels = c("<1%", "1-5%", "5-10%", "10-15%", ">15%"))
+table(pData(target_demoData)$DetectionThreshold, pData(target_demoData)$Category)
+```
+
+```{r}
+# Supplementary Figure 2g-h: segments per gene-detection rate
+g <- ggplot(pData(target_demoData), aes(x = DetectionThreshold)) +
+  geom_bar(aes(fill = Category), color = "black") +
+  geom_text(stat = "count", aes(label = after_stat(count)), vjust = -0.5) +
+  theme_classic() +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Gene Detection Rate", y = "Samples, #", fill = "Category") +
+  scale_fill_manual(values = Category)
+
+h <- ggplot(pData(target_demoData), aes(x = DetectionThreshold)) +
+  geom_bar(aes(fill = Segment), color = "black") +
+  geom_text(stat = "count", aes(label = after_stat(count)), vjust = -0.5) +
+  theme_classic() +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  labs(x = "Gene Detection Rate", y = "Samples, #", fill = "Segment") +
+  scale_fill_manual(values = Segment)
+
+```
+
+##### Segment and gene filtering
+```{r}
+# Remove segments with < 5% of the genes detected
+target_demoData <- target_demoData[, pData(target_demoData)$GeneDetectionRate >= .05]
+dim(target_demoData)
+
+# Gene detection rate across the remaining segments
+LOQ_Mat <- LOQ_Mat[, colnames(target_demoData)]
+fData(target_demoData)$DetectedSegments <- rowSums(LOQ_Mat, na.rm = TRUE)
+fData(target_demoData)$DetectionRate <- fData(target_demoData)$DetectedSegments / nrow(pData(target_demoData))
+
+plot_detect <- data.frame(Freq = c(1, 5, 10, 20, 30, 50))
+plot_detect$Number <- unlist(lapply(c(0.01, 0.05, 0.1, 0.2, 0.3, 0.5),
+                                    function(x) sum(fData(target_demoData)$DetectionRate >= x)))
+plot_detect$Rate <- plot_detect$Number / nrow(fData(target_demoData))
+rownames(plot_detect) <- plot_detect$Freq
+```
+
+```{r}
+# Supplementary Figure 2i: genes detected per % of segments
+i <- ggplot(plot_detect, aes(x = as.factor(Freq), y = Rate, fill = Rate)) +
+  geom_bar(stat = "identity", color = "black") +
+  geom_text(aes(label = formatC(Number, format = "d", big.mark = " ")), vjust = -1, color = "black", size = 4) +
+  scale_fill_viridis_c(option = "magma", direction = 1, limits = c(0, 1), labels = scales::percent) +
+  theme_classic() +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1.1), expand = expansion(mult = c(0, 0))) +
+  labs(x = "% of Segments", y = "Genes Detected, % of Panel > LOQ")
+```
+
+```{r, fig.width = 14, fig.height = 12}
+patch_2 <- plot_grid(g, h, i, labels = c("g", "h", "i"), label_size = letter_size(14), ncol = 3, rel_widths = c(2.5, 2, 2))
+FigureS2 <- plot_grid(patch, patch_2, labels = "", ncol = 1, rel_heights = c(2, 0.9))
+FigureS2
+
+save_plot(FigureS2, "FigureS2.svg", width = 14, height = 12)
+
+# Single panels
+panels <- list(a = a, b = b, c = c, d = d, e = e, f = f)
+for (p in names(panels)) save_plot(panels[[p]], paste0("FigureS2", p, ".svg"), width = 4.7, height = 4.3)
+save_plot(g, "FigureS2g.svg", width = 5, height = 3.5)
+save_plot(h, "FigureS2h.svg", width = 4, height = 3.5)
+save_plot(i, "FigureS2i.svg", width = 4, height = 3.5)
+
+# Source data (g-h: AOIs before the 5% detection filter)
+detection <- g$data[, c("Category", "Segment", "GenesDetected", "GeneDetectionRate", "DetectionThreshold")]
+save_source_data(detection[, -2], "FigureS2g", rownames_to = "AOI")
+save_source_data(detection[, -1], "FigureS2h", rownames_to = "AOI")
+save_source_data(transmute(plot_detect, `% of segments` = Freq, `Genes detected` = Number, `Fraction of panel` = Rate),
+                 "FigureS2i")
+```
+
+```{r}
+# Keep genes detected in >= 10% of the segments, plus the negative control probe
+neg_probes <- unique(subset(fData(target_demoData), CodeClass == "Negative")$TargetName)
+target_demoData <- target_demoData[fData(target_demoData)$DetectionRate >= 0.1 |
+                                     fData(target_demoData)$TargetName %in% neg_probes, ]
+dim(target_demoData)
+```
+
+##### Q3 vs negative probes
+```{r}
+# Visual check of the separation between Q3 counts and the negative-probe background
+Stat_data <- data.frame(row.names = colnames(exprs(target_demoData)),
+                        Segment = colnames(exprs(target_demoData)),
+                        Annotation = pData(target_demoData)[, "Segment"],
+                        Q3 = unlist(apply(exprs(target_demoData), 2, quantile, 0.75, na.rm = TRUE)),
+                        NegProbe = exprs(target_demoData)[neg_probes, ])
+Stat_data_m <- melt(Stat_data, measure.vars = c("Q3", "NegProbe"), variable.name = "Statistic", value.name = "Value")
+
+plt1 <- ggplot(Stat_data_m, aes(x = Value, fill = Statistic)) +
+  geom_histogram(bins = 40, color = "black") +
+  theme_classic() +
+  scale_x_continuous(trans = "log2") +
+  facet_wrap(~Annotation, nrow = 1) +
+  scale_fill_brewer(palette = 4, type = "qual") +
+  labs(x = "Counts", y = "Segments, #")
+
+plt2 <- ggplot(Stat_data, aes(x = NegProbe, y = Q3, color = Annotation)) +
+  geom_abline(intercept = 0, slope = 1, lty = "dashed", color = "darkgray") +
+  geom_point() + guides(color = "none") +
+  theme_classic() +
+  scale_x_continuous(trans = "log2") +
+  scale_y_continuous(trans = "log2") +
+  theme(aspect.ratio = 1) +
+  labs(x = "Negative Probe GeoMean, Counts", y = "Q3 Value, Counts") +
+  scale_color_manual(values = Segment)
+
+plt3 <- ggplot(Stat_data, aes(x = NegProbe, y = Q3 / NegProbe, color = Annotation)) +
+  geom_hline(yintercept = 1, lty = "dashed", color = "darkgray") +
+  geom_point() +
+  theme_classic() +
+  scale_x_continuous(trans = "log2") +
+  scale_y_continuous(trans = "log2") +
+  theme(aspect.ratio = 1) +
+  labs(x = "Negative Probe GeoMean, Counts", y = "Q3/NegProbe Value, Counts", color = "Segment") +
+  scale_color_manual(values = Segment)
+
+plot_grid(plt1, plot_grid(plt2, plt3, nrow = 1, rel_widths = c(0.43, 0.57)), ncol = 1)
+```
+
+```{r}
+saveRDS(target_demoData, file = file.path(path_rds, "target_demoData.rds"))
+```
+
+##### Workspace
+```{r}
+# All objects of this notebook, to change a figure without re-running it (see save_workspace())
+save_workspace()
+```

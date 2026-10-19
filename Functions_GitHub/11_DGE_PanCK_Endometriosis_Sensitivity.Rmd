@@ -1,0 +1,68 @@
+---
+title: "11_DGE_PanCK_Endometriosis_Sensitivity"
+subtitle: "Sensitivity analysis of 10 adjusted for menstrual phase and COC use (Supplementary Figure 5)"
+author: "Luca Mastrantoni"
+output: html_document
+---
+
+Input: `OUTPUT/rds/spe_ruv.rds` (03), `DATA_INPUT/unique_pt_public.xlsx`
+Output: Supp. Fig. 5 (FigureS5, S5a-S5b) in `OUTPUT/FIGURES/Supplementary/FigureS5` and `OUTPUT/Excel Files/Supplementary/FigureS5`
+
+```{r setup, message=FALSE}
+source("Setup.R")
+```
+
+```{r}
+spe_ruv <- readRDS(file.path(path_rds, "spe_ruv.rds"))
+
+# Patient-level covariates
+patients <- read_xlsx(file.path(path_input, "unique_pt_public.xlsx"))
+idx <- match(as.character(spe_ruv$Patient), patients$Patient)
+spe_ruv$Menstrual <- patients$Menstrual[idx]
+spe_ruv$COC <- patients$COC[idx]
+
+endometriosis <- c("Simple endometriosis", "Atypical endometriosis", "Cancer-like endometriosis")
+keep <- spe_ruv$Segment == "PanCK" & spe_ruv$Category %in% endometriosis
+spe_sub <- spe_ruv[, keep]
+dge <- spe_to_dge(spe_ruv)[, keep]
+```
+
+##### Differential expression
+```{r}
+design <- model.matrix(~0 + Category + COC + Menstrual + ruv_W1 + ruv_W2 + ruv_W3, data = colData(spe_sub)) %>%
+  tidy_design("Category")
+contr.matrix <- makeContrasts(CLE_SE = Cancer_like_endometriosis - Simple_endometriosis,
+                              AE_CLE = Cancer_like_endometriosis - Atypical_endometriosis,
+                              levels = colnames(design))
+
+efit <- fit_dge(dge, design, contr.matrix, block = factor(colData(spe_sub)$Patient))$efit
+
+topTable_CLE_SE <- top_table(efit, "CLE_SE")
+topTable_AE_CLE <- top_table(efit, "AE_CLE")
+```
+
+##### Supplementary Figure 5
+```{r, fig.width = 15, fig.height = 7.5}
+v1 <- plot_volcano(topTable_CLE_SE, sig_genes_in(topTable_CLE_SE, volcano_genes_endometriosis),
+                   col_low = "#20854EFF", col_high = "#EFC000FF", xlim = c(-6, 6), ylim = c(0, 10),
+                   left = "SE", right = "CLE", caption_y = 9, label_pt = 4.2, box_padding = 0.5)
+v2 <- plot_volcano(topTable_AE_CLE, sig_genes_in(topTable_AE_CLE, volcano_genes_endometriosis),
+                   col_low = "#0073C2FF", col_high = "#EFC000FF", xlim = c(-6, 6), ylim = c(0, 10),
+                   left = "AE", right = "CLE", caption_y = 9, label_pt = 4.2, box_padding = 0.5)
+FigureS5 <- v1 + v2 + plot_annotation(tag_levels = "a") & theme(plot.tag = element_text(face = "bold", size = letter_size(15)))
+FigureS5
+
+save_plot(FigureS5, "FigureS5.svg", width = 15, height = 7.5)   # 15 in wide: prints at 50% on the page
+
+# Single panels
+save_plot(v1, "FigureS5a.svg", width = 10, height = 10)
+save_plot(v2, "FigureS5b.svg", width = 10, height = 10)
+save_source_data(volcano_source(v1), "FigureS5a")
+save_source_data(volcano_source(v2), "FigureS5b")
+```
+
+##### Workspace
+```{r}
+# All objects of this notebook, to change a figure without re-running it (see save_workspace())
+save_workspace()
+```

@@ -1,0 +1,93 @@
+---
+title: "19_Deconvolution_CD3"
+subtitle: "T-cell subtype deconvolution of CD3+ AOIs with safeTME (Figure 6f-h, Supplementary Figure 9)"
+author: "Luca Mastrantoni"
+output: html_document
+---
+
+Input: `OUTPUT/rds/spe_ruv_d.rds` (05)  
+Output: Figure6f, 6gh (also .pdf) in `OUTPUT/FIGURES/Main/Figure6`, source data 6f-6h in `OUTPUT/Excel Files/Main/Figure6`; Supp. Fig. 9 (FigureS9, S9a-S9b) in `OUTPUT/FIGURES/Supplementary/FigureS9` and `OUTPUT/Excel Files/Supplementary/FigureS9`; `OUTPUT/TABLES/Figure6h.xlsx`
+
+```{r setup, message=FALSE}
+source("Setup.R")
+```
+
+##### T-cell profile matrix: safeTME restricted to CD4, CD8 and regulatory T cells
+```{r}
+data("safeTME")
+to.remove <- c("mast", "pDCs", "mDCs", "monocytes.C", "monocytes.NC.I", "B.naive", "B.memory", "plasma",
+               "fibroblasts", "macrophages", "endothelial.cells", "neutrophils", "NK")
+
+X_sub <- safeTME[, !colnames(safeTME) %in% to.remove]
+cm_sub <- lapply(safeTME.matches, function(vals) setdiff(vals, to.remove))
+cm_sub <- cm_sub[sapply(cm_sub, length) > 0]
+```
+
+##### Deconvolution
+```{r}
+spe_ruv <- readRDS(file.path(path_rds, "spe_ruv_d.rds"))
+spe_sub <- spe_ruv[, colData(spe_ruv)$Segment == "CD3"]
+meta <- as.data.frame(colData(spe_sub))
+
+spd <- prepareSpatialDecon(spe_sub)
+res <- spatialdecon(norm = as.matrix(spd$normCount), bg = spd$backGround, X = X_sub, cellmerges = cm_sub,
+                    align_genes = TRUE)
+
+prop <- res$prop_of_all
+pretty_names <- c("CD4.T.cells" = "T Cells (CD4)", "CD8.T.cells" = "T Cells (CD8)", "Treg" = "T Reg")
+stopifnot(all(rownames(prop) %in% names(pretty_names)))
+rownames(prop) <- pretty_names[rownames(prop)]
+```
+
+##### Supplementary Figure 9
+```{r, fig.width = 18, fig.height = 6}
+prop_bars <- plot_prop_bars(prop, Cell_Types)
+heatmap_grob <- grid::grid.grabExpr(draw(plot_prop_heatmap(prop, meta$Category)))
+# b (heatmap) less tall than a, aligned at the top
+FigureS9 <- plot_grid(prop_bars, plot_grid(heatmap_grob, NULL, ncol = 1, rel_heights = c(0.72, 0.28)),
+                      ncol = 2, rel_widths = c(1, 1.3), labels = c("a", "b"), label_size = letter_size(15))
+FigureS9
+
+save_plot(FigureS9, "FigureS9.svg", width = 15, height = 5)   # 15 in wide: prints at 50% on the page
+
+# Single panels
+save_plot(prop_bars, "FigureS9a.svg", width = 7.8, height = 6)
+save_plot(plot_prop_heatmap(prop, meta$Category), "FigureS9b.svg", width = 10.2, height = 6)
+
+prop_long <- prop_source(prop, meta)
+save_source_data(prop_long[, c("AOI", "CellType", "Proportion")], "FigureS9a")
+save_source_data(data.frame(AOI = colnames(prop), Category = meta[colnames(prop), "Category"], t(prop), check.names = FALSE),
+                 "FigureS9b")
+```
+
+##### Figure 6f-h
+```{r, fig.width = 10, fig.height = 3}
+pc <- prcomp(t(log2(pmax(as.matrix(spd$normCount), 1))))$x[, c(1, 2)]
+
+Figure6f <- plot_pca_pair(prop, pc, Cell_Types, meta$Category)    # each plot with its own legend on its right
+grid.draw(Figure6f)
+
+prop_results <- test_proportions(prop, meta$Category, meta$Patient)
+save_tables(prop_results, "Figure6h.xlsx", rownames_to = NULL)
+
+Figure6gh <- plot_grid(plot_prop_boxplot(prop, meta, Cell_Types),
+                       plot_prop_bubbles(prop_results, border_fdr = 0.1),  # bordered: FDR < 0.1
+                       ncol = 2, rel_widths = c(1.35, 1))   # wider boxplots; the row prints 536 pt wide
+Figure6gh
+
+save_plot(Figure6f, "Figure6f.pdf", width = grob_size(Figure6f)[["w"]], height = grob_size(Figure6f)[["h"]])
+save_plot(Figure6f, "Figure6f.svg", width = grob_size(Figure6f)[["w"]], height = grob_size(Figure6f)[["h"]])
+save_plot(Figure6gh, "Figure6gh.pdf", width = 12.75, height = 3)
+save_plot(Figure6gh, "Figure6gh.svg", width = 12.75, height = 3)
+
+pc_df <- data.frame(AOI = rownames(pc), pc, Category = meta[rownames(pc), "Category"])
+save_source_data(list(Florets = left_join(prop_long, pc_df[, c("AOI", "PC1", "PC2")], by = "AOI"), PCA = pc_df), "Figure6f")
+save_source_data(prop_long, "Figure6g")
+save_source_data(prop_results, "Figure6h")
+```
+
+##### Workspace
+```{r}
+# All objects of this notebook, to change a figure without re-running it (see save_workspace())
+save_workspace()
+```

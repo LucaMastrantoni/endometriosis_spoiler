@@ -1,0 +1,168 @@
+---
+title: "08_PanCK_PCA"
+subtitle: "PCA and correlation of PanCK+ AOIs (Figure 2a-b, Supplementary Table 4)"
+author: "Luca Mastrantoni"
+output: html_document
+---
+
+Input: `OUTPUT/rds/PanCK_seurat.rds`, `OUTPUT/rds/demoSeurat.rds` (04)
+Output: Figure2a, 2b (and 2b legend) in `OUTPUT/FIGURES/Main/Figure2` and `OUTPUT/Excel Files/Main/Figure2`; `OUTPUT/TABLES/SupplementaryTable4.xlsx`
+
+```{r setup, message=FALSE}
+source("Setup.R")
+```
+
+```{r}
+PanCK_seurat <- readRDS(file.path(path_rds, "PanCK_seurat.rds"))
+
+pca_data_sub <- Embeddings(PanCK_seurat, "pca") %>%
+  as.data.frame() %>%
+  rename(PC1 = PC_1, PC2 = PC_2, PC3 = PC_3) %>%
+  mutate(Category = PanCK_seurat$Category, Segment = PanCK_seurat$Segment,
+         Group = PanCK_seurat$Group, Patient = PanCK_seurat$Patient)
+
+stdev <- Stdev(PanCK_seurat, reduction = "pca")
+percent_var <- round(100 * (stdev^2 / sum(stdev^2))[1:3], 1)
+```
+
+##### Figure 2a
+```{r, fig.width = 6, fig.height = 6}
+pc_scatter <- function(x, y, legend = "none") {
+  ggplot(pca_data_sub, aes(x = .data[[x]], y = .data[[y]], fill = Category)) +
+    geom_point(shape = 21, size = 4, alpha = 0.9, color = "black") +
+    scale_fill_manual(values = Category) +
+    labs(x = paste0(x, " (", percent_var[as.numeric(sub("PC", "", x))], "%)"),
+         y = paste0(y, " (", percent_var[as.numeric(sub("PC", "", y))], "%)")) +
+    theme_classic() +
+    theme(legend.position = legend)
+}
+
+# 2 x 2 grid as in the assembled figure: PC1-PC2, PC1-PC3 / PC3-PC2, legend
+Figure2a <- pc_scatter("PC1", "PC2") + pc_scatter("PC1", "PC3") + pc_scatter("PC3", "PC2", legend = "right") +
+  guide_area() + plot_layout(ncol = 2, guides = "collect")
+Figure2a
+
+save_plot(Figure2a, "Figure2a.svg", width = 6, height = 6)
+save_source_data(setNames(pca_data_sub[, c("PC1", "PC2", "PC3", "Category", "Group", "Patient")],
+                          c(paste0("PC", 1:3, " (", percent_var, "%)"), "Category", "Group", "Patient")),
+                 "Figure2a", rownames_to = "AOI")
+```
+
+##### Supplementary Table 4: multinomial regression of Category on each PC
+```{r}
+pca_data_sub$Category <- relevel(as.factor(pca_data_sub$Category), ref = "Simple endometriosis")
+
+# Wald z statistics and p-values of a multinomial model
+compute_z_p <- function(model) {
+  z <- summary(model)$coefficients / summary(model)$standard.errors
+  p <- 2 * (1 - pnorm(abs(z)))
+  colnames(p) <- paste0("p_", colnames(p))
+  cbind(as.data.frame(z), as.data.frame(p)) %>%
+    dplyr::select(-`(Intercept)`, -`p_(Intercept)`)
+}
+
+all_results <- cbind(compute_z_p(multinom(Category ~ PC1, data = pca_data_sub)),
+                     compute_z_p(multinom(Category ~ PC2, data = pca_data_sub)),
+                     compute_z_p(multinom(Category ~ PC3, data = pca_data_sub)))
+SupplementaryTable4 <- all_results %>%
+  rownames_to_column("Category") %>%
+  pivot_longer(cols = -Category, names_to = c(".value", "PC_number"), names_pattern = "(PC|p_PC)(\\d)") %>%
+  mutate(PC_number = paste0("PC", PC_number))
+SupplementaryTable4$logP_value <- -log10(SupplementaryTable4$p_PC)
+SupplementaryTable4
+
+save_tables(SupplementaryTable4, "SupplementaryTable4.xlsx", rownames_to = NULL)
+```
+
+##### Figure 2b: Pearson correlation of PanCK+ AOIs (scaled data)
+```{r, fig.width = 6, fig.height = 6}
+demoSeurat <- readRDS(file.path(path_rds, "demoSeurat.rds"))
+meta <- as.data.frame(demoSeurat@meta.data)
+panck <- rownames(meta[meta$Segment == "PanCK", ])
+meta_seg <- meta[panck, ]
+
+cor.mat <- cor(demoSeurat@assays$RNA$scale.data[, panck], method = "pearson", use = "pairwise.complete.obs")
+range(cor.mat)
+
+# Fixed colour scale shared by the heatmap and its legend (white = no correlation)
+corr_col <- colorRamp2(c(-0.5, 0, 1), c("#2166ac", "#f7f7f7", "#b2182b"))
+
+top_ha <- HeatmapAnnotation(df = meta_seg[, c("Category", "Segment", "Group")],
+                            col = list(Category = Category, Segment = Segment, Group = Group),
+                            gp = gpar(col = "black", lwd = 0.2),
+                            annotation_height = unit(rep(2, 3), "mm"),
+                            annotation_name_gp = gpar(fontsize = 8),
+                            simple_anno_size_adjust = TRUE)
+right_ha <- rowAnnotation(Patient = meta_seg[, c("Patient")],
+                          col = list(Patient = Patient),
+                          gp = gpar(col = "black", lwd = 0.2),
+                          annotation_width = unit(2, "mm"),
+                          annotation_name_gp = gpar(fontsize = 8),
+                          simple_anno_size_adjust = TRUE)
+
+ht <- ComplexHeatmap::Heatmap(cor.mat,
+              name = "Correlation",
+              rect_gp = gpar(type = "none"),
+              column_dend_side = "top",
+              row_dend_side = "right",
+              show_row_names = FALSE,
+              show_column_names = FALSE,
+              top_annotation = top_ha,
+              right_annotation = right_ha,
+              col = corr_col,
+              # draw the upper triangle only
+              cell_fun = function(j, i, x, y, w, h, fill) {
+                if (as.numeric(x) >= 1 - as.numeric(y) + 1e-6) grid.rect(x, y, w, h, gp = gpar(fill = fill, col = "black"))
+              })
+
+heatmap_grob <- grid.grabExpr(draw(ht, show_heatmap_legend = FALSE, show_annotation_legend = FALSE))
+Figure2b <- plot_grid(plotlist = list(heatmap_grob))
+Figure2b
+save_plot(Figure2b, "Figure2b.svg", width = 6, height = 6)
+
+# Source data: correlation matrix in the heatmap order, and the AOI annotations
+heatmap_order <- suppressMessages(column_order(ht))
+save_source_data(list(Correlation = cor.mat[heatmap_order, heatmap_order],
+                      Annotation = meta_seg[colnames(cor.mat)[heatmap_order], c("Category", "Segment", "Group", "Patient")]),
+                 "Figure2b", rownames_to = "AOI")
+```
+
+```{r}
+# Figure 2b legends (drawn separately, at their printed size): rows that widen downwards to fill
+# the empty lower-left triangle of the heatmap - Correlation, Group, Category + Segment, Patient
+legend_style <- list(title_gp = gpar(fontsize = 5, fontface = "bold"), labels_gp = gpar(fontsize = 4.5),
+                     grid_width = unit(1.7, "mm"), grid_height = unit(1.7, "mm"), title_gap = unit(1, "mm"))
+annotation_legend <- function(title, palette, ...) {
+  do.call(Legend, c(list(title = title, at = names(palette), legend_gp = gpar(fill = palette), ...), legend_style))
+}
+legend_corr <- do.call(Legend, c(list(title = "Correlation", col_fun = corr_col, at = c(-0.5, 0, 0.5, 1),
+                                      direction = "horizontal", legend_width = unit(12, "mm"),
+                                      title_position = "topleft"), legend_style))
+legend_rows <- list(list(legend_corr),
+                    list(annotation_legend("Group", Group)),
+                    list(annotation_legend("Category", Category), annotation_legend("Segment", Segment)),
+                    list(annotation_legend("Patient", Patient, ncol = 5, by_row = TRUE)))
+
+to_pt <- function(u) convertUnit(u, "pt", valueOnly = TRUE)
+row_h <- sapply(legend_rows, function(row) max(sapply(row, function(lg) to_pt(ComplexHeatmap:::height(lg)))))
+legend_w <- 160; legend_h <- sum(row_h) + 5 * (length(row_h) - 1)     # pt
+legend_grob <- grid.grabExpr({
+  y <- 0
+  for (i in seq_along(legend_rows)) {
+    x <- 5                                           # room for the "-0.5" label left of the colour bar
+    for (lg in legend_rows[[i]]) {
+      draw(lg, x = unit(x, "pt"), y = unit(legend_h - y, "pt"), just = c("left", "top"))
+      x <- x + to_pt(ComplexHeatmap:::width(lg)) + 8
+    }
+    y <- y + row_h[i] + 5
+  }
+}, width = legend_w / 72, height = legend_h / 72)
+
+save_plot(legend_grob, "Figure2b_legend.svg", width = legend_w / 72, height = legend_h / 72)
+```
+
+##### Workspace
+```{r}
+# All objects of this notebook, to change a figure without re-running it (see save_workspace())
+save_workspace()
+```

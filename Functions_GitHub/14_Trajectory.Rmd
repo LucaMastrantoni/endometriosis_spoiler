@@ -1,0 +1,148 @@
+---
+title: "14_Trajectory"
+subtitle: "Palantir trajectory and cell fates of PanCK+ AOIs (Figure 5)"
+author: "Luca Mastrantoni"
+output: html_document
+---
+
+Input: `OUTPUT/rds/Seurat_Panck_score.rds` (13)
+Output: Figure5a-5e in `OUTPUT/FIGURES/Main/Figure5`, source data 5a-5e in `OUTPUT/Excel Files/Main/Figure5`
+
+Palantir runs through SeuratExtend, which uses its own Python environment.
+
+```{r setup, message=FALSE}
+source("Setup.R")
+```
+
+```{r}
+PanCK_seurat <- readRDS(file.path(path_rds, "Seurat_Panck_score.rds"))
+PanCK_seurat <- FindClusters(PanCK_seurat, verbose = FALSE, resolution = 2)
+PanCK_seurat$Category_Group <- paste0(PanCK_seurat$Category, " - ", PanCK_seurat$Group)
+
+mye_small <- Palantir.RunDM(PanCK_seurat)
+```
+
+##### Figure 5a: multiscale diffusion space
+```{r}
+ms_coords <- as.data.frame(Embeddings(mye_small, "ms")[, 1:2])
+names(ms_coords) <- c("MS1", "MS2")
+
+# Figure 5: every panel is exported at its exact size and placed at one print scale (0.42, i.e. 72 x 0.42 pt per
+# inch), so text prints alike. Plot areas are fixed: the b and c embeddings share map_w x map_h in, a is larger
+# (5.3 x 4.8 in); dots have a black outline. Every subplot of d and e is trend_w x trend_h in, legend in the empty grid cell
+map_w <- 3.1; map_h <- 2.8
+trend_w <- 2.3; trend_h <- 1.6
+trend_text <- theme(axis.text = element_text(size = 11.5), axis.title = element_text(size = 13),          # d and e text
+                    strip.text.x = element_text(size = 12, face = "bold"),
+                    legend.text = element_text(size = 11.5), legend.title = element_text(size = 12.5))
+embedding <- function(colour, scale, title = NULL, size = 4) {
+  df <- cbind(ms_coords, mye_small@meta.data[rownames(ms_coords), colour, drop = FALSE])
+  ggplot(df, aes(MS1, MS2, fill = .data[[colour]])) +
+    geom_point(shape = 21, colour = "black", stroke = 0.3, size = size) + scale + labs(title = title, fill = NULL) + theme_void(base_size = 14) +
+    theme(plot.title = element_text(face = "bold", hjust = 0.5, margin = margin(b = 4)),
+          legend.key.height = unit(0.5, "cm"), plot.margin = margin(4, 8, 4, 4))
+}
+# Fix the size of every plot area (all facets) of a ggplot; returns the gtable
+fixed_map <- function(p, w = map_w, h = map_h) {
+  g <- ggplotGrob(p)
+  panel <- g$layout[grepl("^panel", g$layout$name), ]
+  g$widths[unique(panel$l)] <- unit(w, "in"); g$heights[unique(panel$t)] <- unit(h, "in")
+  g
+}
+save_map <- function(g, file) {
+  save_plot(g, file, width = sum(convertWidth(g$widths, "in", TRUE)), height = sum(convertHeight(g$heights, "in", TRUE)))
+}
+```
+
+```{r, fig.width = 9, fig.height = 5}
+Figure5a <- fixed_map(embedding("Category_Group", scale_fill_manual(values = Category_Group), size = 5.5) +
+                        theme(legend.key.height = unit(0.45, "cm")) +
+                        theme_umap_arrows(x_label = "MS1", y_label = "MS2", text_size = 16,
+                                          anchor_x = unit(8, "mm"), anchor_y = unit(8, "mm"),
+                                          text_offset_x = unit(1.5, "mm"), text_offset_y = unit(1.5, "mm")),
+                      w = 5.3, h = 4.8)
+grid.draw(Figure5a)
+
+save_map(Figure5a, "Figure5a.svg")
+
+save_source_data(cbind(ms_coords, Category_Group = mye_small$Category_Group), "Figure5a", rownames_to = "AOI")
+```
+
+##### Figure 5b-c: pseudotime, entropy and fate probabilities
+```{r, eval=FALSE}
+# How the start and terminal cells were chosen (interactive; the result is fixed below)
+p <- DimPlot(mye_small, reduction = "pca", group.by = "Category_Group")
+start_cell <- CellSelector(p)
+ec <- CellSelector(p)
+ccc <- CellSelector(p)
+```
+
+```{r, fig.width = 9, fig.height = 6}
+start_cell <- "DSP-1001660013638-C-E03.dcc"                       # SE epithelium
+terminal_states <- c("CCC" = "DSP-1001660015487-D-D08.dcc",      # CCC cancer
+                     "EC" = "DSP-1001660013638-C-H04.dcc")       # EC cancer
+
+mye_small <- Palantir.Pseudotime(mye_small, start_cell = start_cell, terminal_states = terminal_states)
+ps <- mye_small@misc$Palantir$Pseudotime
+mye_small@meta.data[, colnames(ps)] <- ps
+
+# b = pseudotime and entropy side by side, c = fate probabilities (EC, CCC) side by side, placed below b
+magma <- scale_fill_viridis_c(option = "A"); viridis <- scale_fill_viridis_c(option = "D")
+Figure5b <- cbind(fixed_map(embedding("Pseudotime", magma, "Pseudotime")),
+                  fixed_map(embedding("Entropy", viridis, "Entropy")), size = "max")
+Figure5c <- cbind(fixed_map(embedding("EC", magma, "EC")), fixed_map(embedding("CCC", magma, "CCC")), size = "max")
+grid.newpage(); grid.draw(Figure5b)
+grid.newpage(); grid.draw(Figure5c)
+
+save_map(Figure5b, "Figure5b.svg")
+save_map(Figure5c, "Figure5c.svg")
+
+# Source data: b = pseudotime and entropy, c = fate probabilities, on the MS embedding
+save_source_data(cbind(ms_coords, ps[rownames(ms_coords), c("Pseudotime", "Entropy")]), "Figure5b", rownames_to = "AOI")
+save_source_data(cbind(ms_coords, ps[rownames(ms_coords), setdiff(colnames(ps), c("Pseudotime", "Entropy")), drop = FALSE]),
+                 "Figure5c", rownames_to = "AOI")
+```
+
+##### Figure 5d: gene trends along pseudotime (MAGIC-imputed)
+```{r, fig.width = 12, fig.height = 9}
+mye_small <- Palantir.Magic(mye_small)
+
+genes <- c("SOX9", "AXIN2", "DKK1", "DKK4",
+           "LGR5", "MMP7", "ESR1", "PGR",
+           "LEFTY1", "CYP1B1", "GPX3", "PTHLH",
+           "MUC5B", "PAEP", "LCN2")
+
+Figure5d <- GeneTrendCurve.Palantir(mye_small, features = genes, point = FALSE, ncol = 4, line.size = 2, magic = TRUE) +
+  scale_color_manual(values = c("EC" = "#A73030FF", "CCC" = "#3B3B3BFF")) +
+  theme(legend.position = "inside", legend.position.inside = c(7, 1) / 8) + trend_text    # in the empty 16th cell of the 4 x 4 grid
+Figure5d
+
+save_map(fixed_map(Figure5d, trend_w, trend_h), "Figure5d.svg")
+# Points behind the curves, from the curve layer (AOIs along each fate; curves are loess fits;
+# expression is MAGIC-imputed)
+trend_data <- function(p) Filter(is.data.frame, lapply(p$layers, `[[`, "data"))[[1]]
+save_source_data(trend_data(Figure5d), "Figure5d")
+```
+
+##### Figure 5e: module-score trends along pseudotime
+```{r, fig.width = 6, fig.height = 7}
+seurat_score <- mye_small
+score_names <- gsub(" ", "_", names(module_genes))
+seurat_score@meta.data[, score_names] <- seurat_score@meta.data[, paste0("cell_state", seq_along(module_genes))]
+
+Figure5e <- GeneTrendCurve.Palantir(seurat_score, line.size = 2, features = score_names, method = "smooth",
+                                    point = FALSE, ncol = 2, magic = FALSE) +
+  scale_color_manual(values = c("EC" = "#A73030FF", "CCC" = "#3B3B3BFF")) +
+  facet_wrap(~ Gene, ncol = 2, scales = "free", labeller = labeller(Gene = function(x) gsub("_", " ", x))) +  # "Steroid receptors"
+  theme(legend.position = "inside", legend.position.inside = c(3 / 4, 1 / 6)) + trend_text   # in the empty 6th cell of the 2 x 3 grid
+Figure5e
+
+save_map(fixed_map(Figure5e, trend_w, trend_h), "Figure5e.svg")
+save_source_data(dplyr::rename(trend_data(Figure5e), Score = Gene, `Module score` = Expression), "Figure5e")
+```
+
+##### Workspace
+```{r}
+# All objects of this notebook, to change a figure without re-running it (see save_workspace())
+save_workspace()
+```

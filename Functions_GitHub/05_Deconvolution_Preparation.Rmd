@@ -1,0 +1,39 @@
+---
+title: "05_Deconvolution_Preparation"
+subtitle: "TMM normalisation and RUV4 correction keeping the negative probes (input for spatialDecon)"
+author: "Luca Mastrantoni"
+output: html_document
+---
+
+Input: `OUTPUT/rds/target_demoData.rds` (01)  
+Output: `OUTPUT/rds/spe_ruv_d.rds`
+
+Same steps as 03_Batch_Correction, but the negative probe is kept because
+`prepareSpatialDecon` uses it to estimate the background.
+
+```{r setup, message=FALSE}
+source("Setup.R")
+```
+
+```{r}
+target_demoData <- readRDS(file.path(path_rds, "target_demoData.rds"))
+
+spe <- geomx_to_spe(target_demoData, rmNegProbe = FALSE)
+spe <- add_sample_labels(spe)
+```
+
+```{r}
+spe <- geomxNorm(spe, method = "TMM")
+spe <- findNCGs(spe, batch_name = "Scan", top_n = 300)
+spe_ruv <- geomxBatchCorrection(spe, factors = c("biology"), NCGs = metadata(spe)$NCGs, k = 3)
+```
+
+```{r}
+saveRDS(spe_ruv, file = file.path(path_rds, "spe_ruv_d.rds"))
+```
+
+##### Workspace
+```{r}
+# All objects of this notebook, to change a figure without re-running it (see save_workspace())
+save_workspace()
+```

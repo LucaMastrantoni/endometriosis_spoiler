@@ -1,0 +1,32 @@
+---
+title: "02_SPE_Preparation"
+subtitle: "Conversion of the QC-filtered GeoMx data to a SpatialExperiment"
+author: "Luca Mastrantoni"
+output: html_document
+---
+
+Input: `OUTPUT/rds/target_demoData.rds` (01)  
+Output: `OUTPUT/rds/spe.rds`
+
+```{r setup, message=FALSE}
+source("Setup.R")
+```
+
+```{r}
+target_demoData <- readRDS(file.path(path_rds, "target_demoData.rds"))
+
+spex <- geomx_to_spe(target_demoData)
+spe <- readGeoMxFromDGE(edgeR::SE2DGEList(spex))
+spe <- add_sample_labels(spe)
+spe
+```
+
+```{r}
+saveRDS(spe, file = file.path(path_rds, "spe.rds"))
+```
+
+##### Workspace
+```{r}
+# All objects of this notebook, to change a figure without re-running it (see save_workspace())
+save_workspace()
+```

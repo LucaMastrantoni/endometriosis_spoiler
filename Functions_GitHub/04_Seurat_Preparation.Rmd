@@ -1,0 +1,61 @@
+---
+title: "04_Seurat_Preparation"
+subtitle: "Seurat objects for all AOIs and for PanCK+ AOIs (scaling, PCA, neighbours, UMAP)"
+author: "Luca Mastrantoni"
+output: html_document
+---
+
+Input: `OUTPUT/rds/spe_ruv.rds` (03)  
+Output: `OUTPUT/rds/demoSeurat.rds`, `OUTPUT/rds/PanCK_seurat.rds`
+
+```{r setup, message=FALSE}
+source("Setup.R")
+```
+
+```{r}
+spe_ruv <- readRDS(file.path(path_rds, "spe_ruv.rds"))
+
+counts <- assay(spe_ruv, "counts")
+logcounts <- assay(spe_ruv, "logcounts")
+metadata <- as.data.frame(colData(spe_ruv))
+
+# Seurat replaces underscores in feature names with dashes: do it here so names match
+rownames(counts) <- gsub("_", "-", rownames(counts))
+rownames(logcounts) <- gsub("_", "-", rownames(logcounts))
+
+# The data are already normalised (TMM + RUV4 logCPM), so no Seurat normalisation
+demoSeurat <- CreateSeuratObject(counts = counts, meta.data = metadata)
+demoSeurat <- SetAssayData(demoSeurat, layer = "data", new.data = logcounts)
+demoSeurat
+```
+
+##### All AOIs (scaled data used for the correlation heatmap in 08)
+```{r}
+demoSeurat <- FindVariableFeatures(demoSeurat)
+demoSeurat <- ScaleData(demoSeurat)
+demoSeurat <- RunPCA(demoSeurat, verbose = FALSE)
+demoSeurat <- FindNeighbors(demoSeurat, reduction = "pca", dims = seq_len(30))
+# NB: PanCK_seurat below inherits this all-AOI clustering (RNA_snn_res.0.8);
+# 09_PanCK_Clustering removes it before clustering the PanCK+ AOIs.
+demoSeurat <- FindClusters(demoSeurat, verbose = FALSE)
+saveRDS(demoSeurat, file = file.path(path_rds, "demoSeurat.rds"))
+```
+
+##### PanCK+ AOIs
+```{r}
+PanCK_seurat <- subset(demoSeurat, subset = Segment == "PanCK")
+PanCK_seurat <- FindVariableFeatures(PanCK_seurat)
+PanCK_seurat <- ScaleData(PanCK_seurat)
+PanCK_seurat <- RunPCA(PanCK_seurat, verbose = FALSE)
+PanCK_seurat <- FindNeighbors(PanCK_seurat, dims = 1:20)
+PanCK_seurat <- RunUMAP(PanCK_seurat, dims = 1:20)
+
+DimPlot(PanCK_seurat, reduction = "umap", group.by = "Category")
+saveRDS(PanCK_seurat, file = file.path(path_rds, "PanCK_seurat.rds"))
+```
+
+##### Workspace
+```{r}
+# All objects of this notebook, to change a figure without re-running it (see save_workspace())
+save_workspace()
+```

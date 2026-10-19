@@ -1,0 +1,91 @@
+---
+title: "15_DGE_PanCK_Cancer_vs_Adjacent"
+subtitle: "Cancer vs adjacent epithelium in clear cell and endometrioid carcinoma (Supplementary Figure 6)"
+author: "Luca Mastrantoni"
+output: html_document
+---
+
+Input: `OUTPUT/rds/spe_ruv.rds` (03)
+Output: Supp. Fig. 6 (FigureS6, S6a-S6h) in `OUTPUT/FIGURES/Supplementary/FigureS6` and `OUTPUT/Excel Files/Supplementary/FigureS6`
+
+```{r setup, message=FALSE}
+source("Setup.R")
+```
+
+```{r}
+spe_ruv <- readRDS(file.path(path_rds, "spe_ruv.rds"))
+dge_spe <- spe_to_dge(spe_ruv)
+
+msigdb_h <- msigdb_sets("H")
+msigdb_c6 <- msigdb_sets("C6")
+```
+
+```{r, fig.width = 26, fig.height = 14}
+# Cancer vs adjacent epithelium within one carcinoma: volcano plot (top 15 up and
+# down genes labelled) and GSEA for GO BP, Hallmarks and oncogenic (C6) signatures
+# Dot-plot text sized for the 26 in figure printed 540 pt wide (terms about 3.2 pt on the page); the
+# left margin keeps the longest terms clear of the panel letter
+s6_dot_theme <- theme(axis.text.y = element_text(size = 11, lineheight = 0.85), axis.text.x = element_text(size = 12),
+                      axis.title.x = element_text(size = 14), legend.text = element_text(size = 11),
+                      legend.title = element_text(size = 13), plot.margin = margin(t = 5, r = 5, b = 5, l = 35))
+s6_dot <- function(gsea) {
+  dotplot(gsea, x = "NES", showCategory = 20, label_format = 40) + theme_classic() + s6_dot_theme +
+    scale_x_continuous(breaks = seq(-4, 4, 2), expand = expansion(mult = 0.12))   # room for the largest dots
+}
+
+# `short`: CCC or EC; the captions read "Upregulated in CCCe/CCCc" as in Figure 3 (e = adjacent epithelium, c = cancer)
+cancer_vs_adjacent <- function(category, short, xlim, caption_x) {
+  keep <- spe_ruv$Category == category & spe_ruv$Segment == "PanCK"
+  spe_sub <- spe_ruv[, keep]
+
+  design <- model.matrix(~0 + Group + ruv_W1 + ruv_W2 + ruv_W3, data = colData(spe_sub)) %>%
+    tidy_design("Group")
+  contr.matrix <- makeContrasts(InOut = Cancer - Epithelial, levels = colnames(design))
+  efit <- fit_dge(dge_spe[, keep], design, contr.matrix, block = factor(colData(spe_sub)$Patient))$efit
+
+  tt <- topTable(efit, sort.by = "P", n = Inf)
+  sig_up <- tt[tt$adj.P.Val < 0.05 & tt$logFC > 1.5, ]
+  sig_down <- tt[tt$adj.P.Val < 0.05 & tt$logFC < -1.5, ]
+  top_genes <- unique(c(rownames(sig_up[order(-sig_up$logFC), ])[1:min(15, nrow(sig_up))],
+                        rownames(sig_down[order(sig_down$logFC), ])[1:min(15, nrow(sig_down))]))
+  volcano <- plot_volcano(tt, top_genes, col_low = "#79AF97FF", col_high = "#B24745FF", xlim = xlim, ylim = c(0, 5),
+                          left = paste0(short, "e"), right = paste0(short, "c"), caption_x = caption_x, caption_y = 4.1,
+                          print_scale = 540 / 1872, label_pt = 4.2)   # the 26 in figure prints 540 pt wide
+
+  gene_list <- ranked_logfc(efit)
+  gsea <- list(go = gsea_go(gene_list), h = gsea_hallmark(gene_list, msigdb_h), c6 = gsea_sets(gene_list, msigdb_c6))
+  dot_go <- s6_dot(gsea$go)
+  dot_h <- s6_dot(gsea$h)
+  dot_c6 <- s6_dot(gsea$c6)
+
+  list(plots = list(volcano, dot_go, dot_h, dot_c6),
+       data = c(list(volcano_source(volcano)), lapply(gsea, gsea_source, show = 20)))
+}
+
+CCC <- cancer_vs_adjacent("Clear cell carcinoma", "CCC", xlim = c(-5, 5), caption_x = 3.5)
+EC <- cancer_vs_adjacent("Endometrioid carcinoma", "EC", xlim = c(-4, 4), caption_x = 2.8)
+CCC_panels <- setNames(CCC$plots, c("a", "b", "c", "d"))
+EC_panels <- setNames(EC$plots, c("e", "f", "g", "h"))
+
+FigureS6 <- plot_grid(plot_grid(plotlist = CCC_panels, nrow = 1, rel_widths = c(1, 1, 0.8, 0.8), labels = names(CCC_panels), label_size = letter_size(26)),
+                      plot_grid(plotlist = EC_panels, nrow = 1, rel_widths = c(1, 1.1, 0.8, 0.8), labels = names(EC_panels), label_size = letter_size(26)),
+                      ncol = 1)
+FigureS6
+
+save_plot(FigureS6, "FigureS6.svg", width = 26, height = 14)
+
+# Single panels
+panels <- c(CCC_panels, EC_panels)
+widths <- c(a = 7.4, b = 7.4, c = 5.6, d = 5.6, e = 7.2, f = 8, g = 5.4, h = 5.4)
+for (p in names(panels)) save_plot(panels[[p]], paste0("FigureS6", p, ".svg"), width = widths[[p]], height = 7)
+
+# Source data
+panel_data <- setNames(c(CCC$data, EC$data), names(panels))
+for (p in names(panel_data)) save_source_data(panel_data[[p]], paste0("FigureS6", p))
+```
+
+##### Workspace
+```{r}
+# All objects of this notebook, to change a figure without re-running it (see save_workspace())
+save_workspace()
+```

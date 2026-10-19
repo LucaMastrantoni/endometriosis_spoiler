@@ -1,0 +1,166 @@
+---
+title: "09_PanCK_Clustering"
+subtitle: "Clustering resolution exploration for PanCK+ AOIs (Supplementary Figure 4)"
+author: "Luca Mastrantoni"
+output: html_document
+---
+
+Input: `OUTPUT/rds/PanCK_seurat.rds` (04)
+Output: Supp. Fig. 4 (FigureS4, S4a-S4e) in `OUTPUT/FIGURES/Supplementary/FigureS4` and `OUTPUT/Excel Files/Supplementary/FigureS4`
+
+```{r setup, message=FALSE}
+source("Setup.R")
+library(clustree)
+```
+
+```{r}
+PanCK_seurat <- readRDS(file.path(path_rds, "PanCK_seurat.rds"))
+
+# Drop the cluster labels inherited from the all-AOI clustering in 04 (RNA_snn_res.0.8),
+# so that the cluster tree only shows clusterings of the PanCK+ AOIs
+PanCK_seurat@meta.data <- dplyr::select(PanCK_seurat@meta.data, -starts_with("RNA_snn_res."), -any_of("seurat_clusters"))
+
+# Louvain clustering (Seurat default) at resolutions 0.6, 1.0, 1.4 and 1.8
+for (r in seq(0.6, 2.0, by = 0.4)) {
+  PanCK_seurat <- FindClusters(PanCK_seurat, resolution = r, verbose = FALSE)
+}
+```
+
+##### Supplementary Figure 4a-c: cluster tree and overlay on the PCA
+```{r}
+clust <- clustree(PanCK_seurat, layout = "sugiyama", prefix = "RNA_snn_res.", use_core_edges = FALSE) +
+  scale_color_brewer(palette = "PuRd") +
+  scale_edge_color_continuous(low = "peachpuff", high = "#b2182b") +
+  theme_void()
+
+pca_data <- Embeddings(PanCK_seurat, "pca") %>%
+  as.data.frame() %>%
+  dplyr::select(PC_1, PC_2) %>%
+  rename(PC1 = PC_1, PC2 = PC_2)
+
+overlay_list <- clustree_overlay(cbind(pca_data, dplyr::select(PanCK_seurat@meta.data, Category, starts_with("RNA_snn_res."))),
+                                 prefix = "RNA_snn_res.", x_value = "PC1", y_value = "PC2", plot_sides = TRUE)
+side <- (overlay_list$x_side + scale_color_brewer(palette = "Reds")) +
+  (overlay_list$y_side + scale_color_brewer(palette = "Reds"))
+
+# Resolutions giving K = 3 (res 1) and K = 5 (res 1.4) clusters
+overlay <- clustree_overlay(cbind(pca_data, dplyr::select(PanCK_seurat@meta.data, RNA_snn_res.1, RNA_snn_res.1.4)),
+                            prefix = "RNA_snn_res.", use_colour = "points", x_value = "PC1", y_value = "PC2") +
+  scale_color_brewer(palette = "Set2") +
+  theme_classic()
+```
+
+##### Supplementary Figure 4d-e: agreement of K = 3 and K = 5 clusters with Category
+```{r}
+meta <- PanCK_seurat@meta.data
+meta$K3 <- meta$RNA_snn_res.1
+meta$K5 <- meta$RNA_snn_res.1.4
+
+alluvial_df <- meta %>%
+  dplyr::select(K3, Category, K5) %>%
+  group_by(K3, Category, K5) %>%
+  summarise(Freq = n(), .groups = "drop")
+
+alluvial <- ggplot(alluvial_df, aes(axis1 = K3, axis2 = Category, axis3 = K5, y = Freq)) +
+  geom_alluvium(aes(fill = Category), width = 1/12, alpha = 0.7) +
+  scale_fill_manual(values = Category, name = "Category") +
+  new_scale("fill") +
+  geom_stratum(aes(fill = after_stat(stratum)), width = 1/12, color = "black") +
+  scale_fill_manual(values = Cluster, guide = "none") +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 3) +
+  scale_x_discrete(limits = c("K3", "Category", "K5"), expand = c(.1, .1)) +
+  theme_void() +
+  theme(legend.position = "none")
+```
+
+```{r}
+# Shannon entropy of Category within each cluster, normalised by its maximum
+cluster_entropy <- function(k) {
+  meta %>%
+    mutate(K = as.factor(.data[[k]]), Category = as.factor(Category)) %>%
+    group_by(K, Category) %>%
+    summarise(n = n(), .groups = "drop") %>%
+    group_by(K) %>%
+    summarise(cluster_size = sum(n),
+              entropy = entropy::entropy(n, unit = "log2"),
+              max_entropy = log2(n_distinct(Category)),
+              norm_entropy = entropy / max_entropy) %>%
+    mutate(norm_entropy = ifelse(is.nan(norm_entropy), 0, norm_entropy))
+}
+
+# Cluster x Category counts (tiles) under the per-cluster entropy (bars)
+entropy_panel <- function(k, y_title, show_categories) {
+  ent <- cluster_entropy(k)
+  cat("Aggregate normalised entropy for", k, ":", sum(ent$cluster_size / sum(ent$cluster_size) * ent$norm_entropy), "\n")
+
+  confmat <- meta %>%
+    mutate(K = .data[[k]]) %>%
+    group_by(K, Category) %>%
+    summarise(Freq = n(), .groups = "drop") %>%
+    complete(K, Category, fill = list(Freq = 0))
+
+  tile <- ggplot(confmat, aes(x = K, y = Category, fill = Category, alpha = Freq)) +
+    geom_tile(color = "black") +
+    geom_text(aes(label = Freq), color = "black", size = 4) +
+    scale_alpha(range = c(0.2, 1)) +
+    scale_fill_manual(values = Category) +
+    theme_classic() +
+    theme(axis.line = element_blank(), axis.title = element_blank(), axis.ticks = element_blank(),
+          panel.grid = element_blank(), legend.position = "none")
+  if (!show_categories) tile <- tile + scale_y_discrete(labels = NULL)
+
+  bar <- ggplot(ent, aes(x = K, y = norm_entropy)) +
+    geom_col(aes(fill = K), color = "black", width = 0.6) +
+    scale_fill_manual(values = Cluster) +
+    theme_classic() +
+    labs(y = y_title) +
+    theme(axis.title.x = element_blank(), axis.text.x = element_blank(), axis.ticks.x = element_blank(),
+          legend.position = "none")
+
+  plot_grid(bar, tile, ncol = 1, rel_heights = c(2, 3), align = "hv")
+}
+
+confusion <- plot_grid(entropy_panel("K3", "H(x)", TRUE), entropy_panel("K5", "", FALSE),
+                       ncol = 2, rel_widths = c(4, 5))
+```
+
+```{r, fig.width = 20, fig.height = 16}
+upper <- plot_grid(clust, side, ncol = 2, labels = c("a", "b"), label_size = letter_size(15), rel_widths = c(0.3, 0.6))
+lower <- plot_grid(overlay, plot_grid(alluvial, confusion, ncol = 1, labels = c("d", "e"), label_size = letter_size(15)),
+                   ncol = 2, labels = c("c", ""), label_size = letter_size(15))
+FigureS4 <- plot_grid(upper, lower, ncol = 1)
+FigureS4
+
+save_plot(FigureS4, "FigureS4.svg", width = 15, height = 12)   # 15 in wide: prints at 50% on the page
+
+# Single panels
+save_plot(clust, "FigureS4a.svg", width = 6, height = 8)
+save_plot(side, "FigureS4b.svg", width = 14, height = 8)
+save_plot(overlay, "FigureS4c.svg", width = 10, height = 8)
+save_plot(alluvial, "FigureS4d.svg", width = 10, height = 4)
+save_plot(confusion, "FigureS4e.svg", width = 10, height = 4)
+
+# Source data: cluster of each AOI at each resolution (a-c), cluster-tree nodes (a),
+# alluvial counts (d), entropy and cluster x Category counts (e)
+res_cols <- grep("^RNA_snn_res\\.", names(meta), value = TRUE)
+assignments <- cbind(AOI = rownames(pca_data), pca_data, meta[rownames(pca_data), c("Category", res_cols)])
+tree_nodes <- as.data.frame(clust$data) %>%
+  dplyr::select(-starts_with("."), -any_of(c("x", "y", "circular"))) %>%
+  Filter(Negate(is.list), .)
+cluster_counts <- function(k) {
+  meta %>% dplyr::count(Cluster = .data[[k]], Category, name = "AOIs") %>% complete(Cluster, Category, fill = list(AOIs = 0))
+}
+save_source_data(list(Clusters = assignments, Nodes = tree_nodes), "FigureS4a")
+save_source_data(assignments, "FigureS4b")
+save_source_data(assignments[, c("AOI", "PC1", "PC2", "Category", "RNA_snn_res.1", "RNA_snn_res.1.4")], "FigureS4c")
+save_source_data(alluvial_df, "FigureS4d")
+save_source_data(list(Entropy_K3 = cluster_entropy("K3"), Entropy_K5 = cluster_entropy("K5"),
+                      Counts_K3 = cluster_counts("K3"), Counts_K5 = cluster_counts("K5")),
+                 "FigureS4e")
+```
+
+##### Workspace
+```{r}
+# All objects of this notebook, to change a figure without re-running it (see save_workspace())
+save_workspace()
+```

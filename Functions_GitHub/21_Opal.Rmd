@@ -1,0 +1,69 @@
+---
+title: "21_Opal"
+subtitle: "Multiplex immunofluorescence: MUC5B+ epithelium and CD66b+ neutrophils in CLE vs SE (Figure 8b, 8e)"
+author: "Luca Mastrantoni"
+output: html_document
+---
+
+Input: `DATA_INPUT/opal/ROI_Compositions_public.xlsx` (per-sample cell counts from the QuPath phenotyping: median of three ROIs per sample; ROI = patient code)
+Output: Figure8b, 8e in `OUTPUT/FIGURES/Main/Figure8` and `OUTPUT/Excel Files/Main/Figure8`
+
+```{r setup, message=FALSE}
+source("Setup.R")
+```
+
+```{r}
+opal <- read_xlsx(file.path(path_input, "opal", "ROI_Compositions_public.xlsx")) |>
+  dplyr::rename(PanCK_MUC5B = `PanCK+/MUC5B+`,
+                PanCK_MUC5Bn = `PanCK+/MUC5B-`,
+                ARG = `CD66b+/MPO+/ARG+`,
+                CD66_prop = `CD66b+_Prop`)
+
+t.test(PanCK_MUC5B ~ Category, opal)
+t.test(PanCK_MUC5Bn ~ Category, opal)
+```
+
+```{r}
+# Mean +/- SE bar per category with one dot per sample
+opal_barplot <- function(y, y_label) {
+  ggbarplot(opal, x = "Category", y = y, add = "mean_se", color = "black", fill = "Category",
+            position = position_dodge(1)) +
+    ggbeeswarm::geom_beeswarm(aes(x = Category, y = .data[[y]]), dodge.width = 0, cex = 4, size = 4,
+                              shape = 21, fill = "darkgray", color = "black", alpha = 0.8) +
+    labs(y = y_label, x = "") +
+    scale_fill_manual(values = c("CLE" = "#EFC000FF", "SE" = "#20854EFF")) +
+    theme(legend.position = "none")
+}
+```
+
+##### Figure 8b
+```{r, fig.width = 4.8, fig.height = 2.88}
+Figure8b <- opal_barplot("PanCK_MUC5B", "# PanCK+/MUC5B+ cells") +
+  opal_barplot("PanCK_MUC5Bn", "# PanCK+/MUC5B- cells") +
+  opal_barplot("MUC5B_Prop", "Proportion PanCK+/MUC5B+")
+Figure8b
+
+save_plot(Figure8b, "Figure8b.svg", width = 4.8, height = 2.88)   # as tall as panel a on the page
+save_source_data(dplyr::select(opal, Patient = ROI, Category, `PanCK+/MUC5B+` = PanCK_MUC5B, `PanCK+/MUC5B-` = PanCK_MUC5Bn,
+                               PANCK, MUC5B_Prop),
+                 "Figure8b")
+```
+
+##### Figure 8e
+```{r, fig.width = 1.95, fig.height = 4.75}
+# two-line axis titles: the plots are short
+Figure8e <- opal_barplot("CD66_prop", "Proportion\nCD66b+/MPO+") /
+  opal_barplot("ARG", "# CD66b+/MPO+/\nARG1+")
+Figure8e
+
+save_plot(Figure8e, "Figure8e.svg", width = 1.95, height = 4.75)   # from the c-d letter line to the bottom of their legends
+save_source_data(dplyr::select(opal, Patient = ROI, Category, `CD66b+_Combined`, Non_PANCK, `CD66b+_Prop` = CD66_prop,
+                               `CD66b+/MPO+/ARG+` = ARG),
+                 "Figure8e")
+```
+
+##### Workspace
+```{r}
+# All objects of this notebook, to change a figure without re-running it (see save_workspace())
+save_workspace()
+```

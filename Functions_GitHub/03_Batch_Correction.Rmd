@@ -1,0 +1,156 @@
+---
+title: "03_Batch_Correction"
+subtitle: "TMM normalisation and RUV4 batch correction (Supplementary Figure 3)"
+author: "Luca Mastrantoni"
+output: html_document
+---
+
+Input: `OUTPUT/rds/spe.rds` (02)
+Output: `OUTPUT/rds/spe_ruv.rds`; Supp. Fig. 3 (FigureS3, S3a-S3e) in `OUTPUT/FIGURES/Supplementary/FigureS3` and `OUTPUT/Excel Files/Supplementary/FigureS3`
+
+```{r setup, message=FALSE}
+source("Setup.R")
+```
+
+```{r}
+spe <- readRDS(file.path(path_rds, "spe.rds"))
+```
+
+##### Diagnostics before correction
+```{r}
+# Relative log expression of raw and logCPM counts, and PCA by category, scan, segment and group
+plotRLExpr(spe, assay = 1, ordannots = "Patient") + xlab("") + ylab("RLE") + theme_classic()
+plotRLExpr(spe, assay = 2, ordannots = "Patient", fill = Category) +
+  scale_fill_manual(values = Category) + xlab("") + ylab("RLE") + theme_classic()
+
+set.seed(100)
+spe <- scater::runPCA(spe)
+pca_results <- reducedDim(spe, "PCA")
+
+pca_by <- function(var, palette) {
+  drawPCA(spe, precomputed = pca_results, col = "black") +
+    geom_point(aes(fill = .data[[var]]), shape = 21, size = 3, alpha = 0.9) +
+    palette +
+    theme_classic()
+}
+plot_grid(pca_by("Category", scale_fill_manual(values = Category)),
+          pca_by("Scan", scale_fill_nejm()),
+          pca_by("Segment", scale_fill_manual(values = Segment)),
+          pca_by("Group", scale_fill_manual(values = Group)),
+          ncol = 2, align = "hv", axis = "r")
+plotScreePCA(spe, precomputed = pca_results) + theme_classic() + theme(axis.text.x = element_text(angle = 90))
+```
+
+##### Normalisation and batch correction
+```{r}
+spe <- geomxNorm(spe, method = "TMM")
+
+plotRLExpr(spe, assay = 2, fill = Category) + scale_fill_manual(values = Category) + xlab("") + ylab("RLE") + theme_classic()
+plotRLExpr(spe, assay = 2, fill = Scan) + scale_fill_nejm() + xlab("") + ylab("RLE") + theme_classic()
+```
+
+```{r, fig.width = 10, fig.height = 4.5}
+# Negative control genes: top 300 by coefficient of variation, slide (Scan) as batch
+spe <- findNCGs(spe, batch_name = "Scan", top_n = 300)
+
+# Supplementary Figure 3a: silhouette score by number of unwanted factors k
+bestk <- findBestK(spe,
+                   factor_of_int = c("biology"),
+                   factor_batch = "Scan_ID",
+                   NCGs = S4Vectors::metadata(spe)$NCGs) +
+  ylab("Silhouette Score") +
+  theme_classic()
+bestk
+```
+
+```{r}
+spe_ruv <- geomxBatchCorrection(spe, factors = c("biology"), NCGs = metadata(spe)$NCGs, k = 3)
+spe_ruv
+```
+
+```{r}
+saveRDS(spe_ruv, file = file.path(path_rds, "spe_ruv.rds"))
+```
+
+##### Supplementary Figure 3
+```{r}
+set.seed(100)
+spe_ruv <- scater::runPCA(spe_ruv)
+pca_results_ruv <- reducedDim(spe_ruv, "PCA")
+
+pca_data <- as.data.frame(pca_results_ruv)
+pca_data$Category <- spe_ruv$Category
+pca_data$Segment <- spe_ruv$Segment
+pca_data$Group <- spe_ruv$Group
+
+percentVar <- attr(pca_results_ruv, "percentVar")
+pc_labels <- paste0("PC", 1:4, " (", round(percentVar[1:4], 1), "%)")
+```
+
+```{r}
+# Pairs plot of PC1-PC4 coloured by `var`: upper triangle of scatter plots, legend bottom left
+pairs_plot <- function(var, palette, axis = NULL) {
+  scatter_plot <- function(x, y) {
+    ggplot(pca_data, aes_string(x = x, y = y, fill = var)) +
+      geom_point(shape = 21, size = 3, alpha = 0.9, color = "black") +
+      scale_fill_manual(values = palette) +
+      theme_classic() +
+      labs(x = pc_labels[as.numeric(sub("PC", "", x))],
+           y = pc_labels[as.numeric(sub("PC", "", y))])
+  }
+  legend <- get_legend(scatter_plot("PC1", "PC2") + theme(legend.position = "right"))
+  p <- function(x, y) scatter_plot(x, y) + theme(legend.position = "none")
+  args <- list(plot_grid(p("PC1", "PC2"), p("PC1", "PC3"), p("PC1", "PC4"), ncol = 3),
+               plot_grid(legend, p("PC2", "PC3"), p("PC2", "PC4"), ncol = 3),
+               plot_grid(NULL, NULL, p("PC3", "PC4"), ncol = 3),
+               ncol = 1, align = "hv")
+  if (!is.null(axis)) args$axis <- axis
+  do.call(plot_grid, args)
+}
+
+category_plot <- pairs_plot("Category", Category)
+seg_plot <- pairs_plot("Segment", Segment, axis = "l")
+group_plot <- pairs_plot("Group", Group, axis = "l")
+```
+
+```{r, fig.width = 20, fig.height = 18}
+# Supplementary Figure 3b: RLE after TMM + RUV4
+RLE_cat <- plotRLExpr(spe_ruv, ordannots = "Patient", assay = 2, color = "black", fill = Category) +
+  ggtitle("") +
+  scale_fill_manual(values = Category) +
+  ylab("RLE") +
+  xlab("") +
+  theme_classic() +
+  theme(legend.position = "none")
+
+ruv <- plot_grid(bestk, RLE_cat, ncol = 1, rel_heights = c(0.5, 0.5), labels = c("a", "b"), label_size = letter_size(15))
+FigureS3 <- plot_grid(ruv, category_plot, seg_plot, group_plot,
+                      ncol = 2, labels = c("", "c", "d", "e"), label_size = letter_size(15), rel_heights = c(2, 2))
+FigureS3
+
+save_plot(FigureS3, "FigureS3.svg", width = 15, height = 13.5)   # 15 in wide: prints at 50% on the page, like the other figures
+
+# Single panels
+save_plot(bestk, "FigureS3a.svg", width = 10, height = 4.5)
+save_plot(RLE_cat, "FigureS3b.svg", width = 10, height = 4.5)
+save_plot(category_plot, "FigureS3c.svg", width = 10, height = 9)
+save_plot(seg_plot, "FigureS3d.svg", width = 10, height = 9)
+save_plot(group_plot, "FigureS3e.svg", width = 10, height = 9)
+
+# Source data (b: RLE box statistics per AOI, in plotting order)
+save_source_data(bestk$data, "FigureS3a")
+save_source_data(transmute(RLE_cat$data, Order = x, AOI = RestoolsMtchID, Patient, Category,
+                           Lower_whisker = ymin, Q1 = lower, Median = middle, Q3 = upper, Upper_whisker = ymax),
+                 "FigureS3b")
+pcs <- pca_data[, paste0("PC", 1:4)]
+names(pcs) <- pc_labels
+save_source_data(cbind(pcs, Category = pca_data$Category), "FigureS3c", rownames_to = "AOI")
+save_source_data(cbind(pcs, Segment = pca_data$Segment), "FigureS3d", rownames_to = "AOI")
+save_source_data(cbind(pcs, Group = pca_data$Group), "FigureS3e", rownames_to = "AOI")
+```
+
+##### Workspace
+```{r}
+# All objects of this notebook, to change a figure without re-running it (see save_workspace())
+save_workspace()
+```

@@ -1,0 +1,124 @@
+---
+title: "07_Segment_Markers"
+subtitle: "Cell-type markers of each segment vs the other two (Figure 1e)"
+author: "Luca Mastrantoni"
+output: html_document
+---
+
+Input: `OUTPUT/rds/spe_ruv.rds` (03)
+Output: Figure1e in `OUTPUT/FIGURES/Main/Figure1` and `OUTPUT/Excel Files/Main/Figure1`; `OUTPUT/TABLES/Figure1e.xlsx`
+
+```{r setup, message=FALSE}
+source("Setup.R")
+```
+
+```{r}
+spe_ruv <- readRDS(file.path(path_rds, "spe_ruv.rds"))
+dge_spe <- spe_to_dge(spe_ruv)
+
+# AOI area (Results)
+median(dge_spe$samples$area, na.rm = TRUE)
+range(dge_spe$samples$area, na.rm = TRUE)
+quantile(dge_spe$samples$area, probs = c(0.25, 0.5, 0.75), na.rm = TRUE)
+```
+
+##### Differential expression: each segment vs the mean of the other two
+```{r}
+design <- model.matrix(~0 + Segment + ruv_W1 + ruv_W2 + ruv_W3, data = colData(spe_ruv))
+contr.matrix <- makeContrasts(PanCK = SegmentPanCK - (SegmentCD68 + SegmentCD3)/2,
+                              CD3 = SegmentCD3 - (SegmentPanCK + SegmentCD68)/2,
+                              CD68 = SegmentCD68 - (SegmentPanCK + SegmentCD3)/2,
+                              levels = colnames(design))
+
+res <- fit_dge(dge_spe, design, contr.matrix, block = factor(colData(spe_ruv)$Patient))
+efit <- res$efit
+```
+
+```{r}
+markers_df <- lapply(c("PanCK", "CD3", "CD68"), function(segment) {
+  df <- top_table(efit, segment)
+  df$Category <- segment
+  df$Gene <- rownames(df)
+  df
+}) %>%
+  do.call(rbind, .) %>%
+  mutate(log10q = -log(adj.P.Val, base = 10)) %>%
+  arrange(Category, desc(logFC)) %>%
+  mutate(Gene = factor(Gene, levels = unique(Gene)))
+
+markers <- c("PAX8", "KRT8", "EPCAM", "MUC1",
+             "TRBC1", "TRAC", "PTPRC", "CD2", "IL17A", "FOXP3", "CD3E", "CD3G", "CD3D", "CD8A", "IL2RA",
+             "CD68", "CD163", "CD14", "MRC1", "MSR1", "CSF1R", "FCGR3A", "IL1B", "FOLR2", "APOE")
+
+# Markers are grouped by function; markers without a group ("Other") are not shown
+df2 <- markers_df %>%
+  filter(Gene %in% markers) %>%
+  mutate(Function = case_when(
+           Gene %in% c("PAX8", "KRT8", "EPCAM", "MUC1", "MMP7") ~ "Epithelial",
+           Gene %in% c("TRBC1", "TRAC", "CD2", "IL17A", "FOXP3", "CD3E", "CD3G", "CD3D", "CD4", "CD8A", "IL2RA") ~ "T cell",
+           Gene %in% c("CD68", "CD163", "CD14", "CSF1R", "FOLR2", "APOE", "HMOX1") ~ "Macrophage",
+           Gene %in% c("PTPRC") ~ "Immune",
+           TRUE ~ "Other"),
+         Gene = factor(Gene, levels = unique(Gene[order(Function, Gene)])),
+         Function = factor(Function, levels = c("Epithelial", "T cell", "Macrophage", "Immune"))) %>%
+  subset(Function != "Other")
+df2
+
+save_tables(df2, "Figure1e.xlsx", rownames_to = NULL)
+```
+
+##### Figure 1e
+```{r, fig.width = 6, fig.height = 6}
+dotplot2 <- ggplot(df2, aes(x = Gene, y = Category, fill = logFC, size = log10q)) +
+  geom_point(shape = 21, color = ifelse(df2$adj.P.Val < 0.05, "black", "NA")) +
+  scale_size(range = c(0.5, 3.5)) +
+  theme_classic() +
+  scale_fill_gradient2(low = "#2166ac", mid = "#f7f7f7", high = "#b2182b", midpoint = 0, name = expression(log[2]*" FC")) +
+  labs(x = NULL, y = NULL, size = expression(-log[10](q~value))) +
+  facet_grid(. ~ Function, scales = "free_x", space = "free_x") +
+  theme(strip.placement = "outside",
+        strip.background = element_blank(),
+        strip.text.x = element_text(angle = 90, hjust = 0, vjust = 0.5),
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+        legend.position = "bottom",
+        legend.box = "horizontal") +
+  guides(size = guide_legend(order = 1), fill = guide_colorbar(order = 2))
+
+cleveland2 <- ggplot(df2, aes(x = Gene, y = logFC, color = "black", fill = Category, size = log10q)) +
+  geom_line(aes(group = Gene), color = "black", linewidth = 0.5, linetype = "solid", show.legend = FALSE) +
+  geom_point(shape = 21, color = ifelse(df2$adj.P.Val < 0.05, "black", "NA")) +
+  scale_fill_manual(values = Segment) +
+  scale_size(range = c(0.5, 3.5)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  theme_classic() +
+  facet_grid(. ~ Function, scales = "free_x", space = "free_x") +
+  labs(title = "", x = "", y = expression(log[2]*" FC"), fill = "Segment", size = expression(-log[10](q~value))) +
+  theme(strip.placement = "outside",
+        strip.background = element_blank(),
+        strip.text.x = element_blank(),
+        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+        legend.position = "bottom",
+        legend.box = "horizontal",
+        legend.text = element_text(size = 7), legend.spacing.x = unit(0.1, "cm"), legend.margin = margin(0, 0, 0, 0)) +
+  guides(size = guide_legend(order = 1), fill = guide_legend(order = 2, override.aes = list(size = 2.5)))
+
+# larger axis and strip text, compact legends, so the text reads well at the printed size
+big_text <- theme(axis.text = element_text(size = 12), axis.title = element_text(size = 12),
+                  strip.text.x = element_text(size = 12), legend.title = element_text(size = 10),
+                  legend.text = element_text(size = 9))
+dotplot2 <- dotplot2 + big_text + theme(strip.text.x = element_text(angle = 90, hjust = 0, vjust = 0.5, size = 12))
+cleveland2 <- cleveland2 + big_text + theme(strip.text.x = element_blank()) + scale_y_continuous(breaks = c(-2, 0, 2))
+Figure1e <- plot_grid(dotplot2, cleveland2, ncol = 1, rel_heights = c(1.4, 1.1), align = "v", axis = "lr")
+Figure1e
+
+save_plot(Figure1e, "Figure1e.svg", width = 6, height = 6)  # small export: larger text on the page
+save_source_data(dplyr::select(df2, Gene, Function, Segment = Category, logFC, AveExpr, t, P.Value, adj.P.Val,
+                               `-log10(q value)` = log10q),
+                 "Figure1e")
+```
+
+##### Workspace
+```{r}
+# All objects of this notebook, to change a figure without re-running it (see save_workspace())
+save_workspace()
+```

@@ -1,0 +1,140 @@
+---
+title: "06_Cohort_Summary"
+subtitle: "AOI summary and immunohistochemistry (Figure 1b-d, Supplementary Tables 2 and 3B)"
+author: "Luca Mastrantoni"
+output: html_document
+---
+
+Input: `OUTPUT/rds/spe_ruv.rds` (03), `DATA_INPUT/clinical.xlsx`, `DATA_INPUT/IHC_public.xlsx`
+Output: Figure1b-1d in `OUTPUT/FIGURES/Main/Figure1` and `OUTPUT/Excel Files/Main/Figure1`; `OUTPUT/TABLES/Study_Summary.xlsx`, `OUTPUT/TABLES/SupplementaryTable3B.xlsx`
+
+```{r setup, message=FALSE}
+source("Setup.R")
+```
+
+```{r}
+spe_ruv <- readRDS(file.path(path_rds, "spe_ruv.rds"))
+
+# Order patients by category for the alluvial plot
+meta_df <- as.data.frame(colData(spe_ruv))
+patient_order <- unique(arrange(meta_df, Category, Patient)$Patient)
+meta_df$Patient <- factor(meta_df$Patient, levels = patient_order)
+colData(spe_ruv) <- DataFrame(meta_df)
+```
+
+##### Figure 1b
+```{r, fig.width = 6.2, fig.height = 5.35}
+Figure1b <- plotSampleInfo(spe_ruv, column2plot = c("Patient", "Category", "Segment", "Group")) +
+  theme_void() +
+  scale_fill_manual(values = Alluvial) +
+  scale_x_discrete(position = "top") +  # column headers above the strata
+  theme(legend.position = "none", axis.text.x.top = element_text(size = 10, face = "bold", margin = margin(b = 3)))
+Figure1b
+
+save_plot(Figure1b, "Figure1b.svg", width = 6.2, height = 5.35)  # small export: larger text on the page
+save_source_data(dplyr::count(as.data.frame(colData(spe_ruv)), Patient, Category, Segment, Group, name = "AOIs"), "Figure1b")
+```
+
+##### Summary numbers and Supplementary Table 2
+```{r}
+summary <- as.data.frame(colData(spe_ruv))
+
+sum(summary$lib.size)
+quantile(summary$GenesDetected, c(0.25, 0.50, 0.75))
+
+tab_seg <- as.data.frame(table(summary$Category, summary$Segment))
+colnames(tab_seg) <- c("Category", "Segment", "Count")
+tab_seg
+
+tab_group <- as.data.frame(table(summary$Category, summary$Group))
+colnames(tab_group) <- c("Category", "Group", "Count")
+tab_group
+
+save_tables(summary[, c("Segment", "Group", "Category", "Scan", "Patient")], "Study_Summary.xlsx",
+            rownames_to = "Identifier")
+```
+
+##### Figure 1c
+```{r, fig.width = 8.4, fig.height = 3}
+a <- ggplot(tab_seg, aes(x = Count, y = Category, fill = Segment)) +
+  geom_point(shape = 21, size = 2.5) +
+  scale_fill_manual(values = Segment) +
+  xlim(0, 25) + xlab("") + ylab("") +
+  theme_classic()
+
+tab_group <- subset(tab_group, Count > 0)
+b <- ggplot(tab_group, aes(x = Count, y = Category, fill = Group)) +
+  geom_point(shape = 21, size = 2.5) +
+  scale_fill_manual(values = Group) +
+  xlim(0, 25) + xlab("") +
+  theme_classic() +
+  theme(axis.title.y = element_blank())
+
+c <- ggplot(tab_seg, aes(x = Count, y = Category, fill = Segment)) +
+  geom_bar(stat = "identity", position = "fill", color = "black") +
+  scale_fill_manual(values = Segment) +
+  scale_x_continuous(labels = scales::percent) +
+  xlab("") + ylab("") +
+  theme_classic()
+
+d <- ggplot(tab_group, aes(x = Count, y = Category, fill = Group)) +
+  geom_bar(stat = "identity", position = "fill", color = "black") +
+  scale_fill_manual(values = Group) +
+  scale_x_continuous(labels = scales::percent) +
+  xlab("") +
+  theme_classic() +
+  theme(axis.title.y = element_blank())
+
+Figure1c <- (a + b) / (c + d) +
+  plot_layout(widths = c(1.8, 1)) &
+  theme(legend.position = "right", legend.direction = "vertical", legend.key.size = unit(0.3, "cm"),
+        legend.margin = margin(0, 0, 0, 0), axis.text.y = element_text(size = 7.5))
+Figure1c
+
+save_plot(Figure1c, "Figure1c.svg", width = 8.4, height = 3)  # small export: larger text on the page
+save_source_data(list(Segment = mutate(tab_seg, Percent = 100 * Count / ave(Count, Category, FUN = sum)),
+                      Group = mutate(tab_group, Percent = 100 * Count / ave(Count, Category, FUN = sum))),
+                 "Figure1c")
+```
+
+##### Figure 1d
+```{r, fig.width = 7.2, fig.height = 2.25}
+clinical <- read_xlsx(file.path(path_input, "clinical.xlsx"))
+
+short_names <- c("Atypical endometriosis" = "AE", "Cancer-like endometriosis" = "CLE",
+                 "Clear cell carcinoma" = "CCC", "Endometrioid carcinoma" = "EC", "Simple endometriosis" = "SE")
+
+clinical <- subset(clinical, !(Marker %in% c("PD1", "PD-L1 CPS", "PD-L1 TPS"))) %>%
+  mutate(Marker = factor(Marker, levels = c("PD-L1 IRS Epithelium", "PD-L1 IRS Stroma", "CD3", "CD4", "CD8", "CD68")))
+
+Figure1d <- ggplot(clinical, aes(x = Category, y = Value, fill = Category)) +
+  geom_boxplot(linewidth = 0.4, outlier.shape = NA) +
+  geom_point(size = 0.8) +
+  scale_fill_manual(values = Category, labels = short_names) +
+  scale_x_discrete(labels = short_names) +
+  facet_wrap(~Marker, nrow = 1, scales = "free_y", labeller = label_wrap_gen(12)) +  # long marker names on two lines
+  theme_classic() +
+  theme(legend.position = "none",
+        strip.background = element_rect(colour = NA, fill = NA),
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+  labs(title = "", y = "%", x = "")
+Figure1d
+
+save_plot(Figure1d, "Figure1d.svg", width = 7.2, height = 2.25)  # small export: larger text on the page
+save_source_data(dplyr::select(clinical, Category, Marker, Value), "Figure1d")
+```
+
+##### Supplementary Table 3B
+```{r}
+# Mismatch repair proteins, ER, PR and β-catenin, one row per patient
+ihc <- read_xlsx(file.path(path_input, "IHC_public.xlsx"))
+ihc
+
+save_tables(ihc, "SupplementaryTable3B.xlsx", rownames_to = NULL)
+```
+
+##### Workspace
+```{r}
+# All objects of this notebook, to change a figure without re-running it (see save_workspace())
+save_workspace()
+```

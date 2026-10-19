@@ -1,0 +1,132 @@
+---
+title: "12_DGE_PanCK_Cancer"
+subtitle: "PanCK+ AOIs of carcinomas (epithelium and cancer) vs SE and vs CLE (Figure 3)"
+author: "Luca Mastrantoni"
+output: html_document
+---
+
+Input: `OUTPUT/rds/spe_ruv.rds` (03)
+Output: Figure3ab, 3cd, 3ef, 3gh (3cd and 3gh also .pdf) in `OUTPUT/FIGURES/Main/Figure3`, source data 3a-3h in `OUTPUT/Excel Files/Main/Figure3`; `OUTPUT/TABLES/Figure3ad.xlsx`, `Figure3eh.xlsx`
+
+```{r setup, message=FALSE}
+source("Setup.R")
+```
+
+```{r}
+spe_ruv <- readRDS(file.path(path_rds, "spe_ruv.rds"))
+
+keep <- spe_ruv$Segment == "PanCK" & spe_ruv$Group %in% c("Epithelial", "Atypical Epithelial", "Cancer")
+spe_sub <- spe_ruv[, keep]
+dge <- spe_to_dge(spe_ruv)[, keep]
+
+# One group per category and compartment; endometriosis epithelium (including the
+# atypical epithelium of AE) is labelled by its category only
+category_group <- paste0(spe_sub$Category, "_", gsub("Atypical Epithelial", "Epithelial", spe_sub$Group))
+colData(spe_sub)$Category_Group <- gsub("^(Atypical endometriosis|Cancer-like endometriosis|Simple endometriosis)_Epithelial$",
+                                        "\\1", category_group)
+table(colData(spe_sub)$Category_Group)
+```
+
+##### Differential expression
+```{r}
+design <- model.matrix(~0 + Category_Group + ruv_W1 + ruv_W2 + ruv_W3, data = colData(spe_sub)) %>%
+  tidy_design("Category_Group")
+contr.matrix <- makeContrasts(CCCe_SE = Clear_cell_carcinoma_Epithelial - Simple_endometriosis,
+                              CCCc_SE = Clear_cell_carcinoma_Cancer - Simple_endometriosis,
+                              ECe_SE = Endometrioid_carcinoma_Epithelial - Simple_endometriosis,
+                              ECc_SE = Endometrioid_carcinoma_Cancer - Simple_endometriosis,
+                              CCCe_CLE = Clear_cell_carcinoma_Epithelial - Cancer_like_endometriosis,
+                              CCCc_CLE = Clear_cell_carcinoma_Cancer - Cancer_like_endometriosis,
+                              ECe_CLE = Endometrioid_carcinoma_Epithelial - Cancer_like_endometriosis,
+                              ECc_CLE = Endometrioid_carcinoma_Cancer - Cancer_like_endometriosis,
+                              levels = colnames(design))
+
+efit <- fit_dge(dge, design, contr.matrix, block = factor(colData(spe_sub)$Patient))$efit
+
+tables <- lapply(setNames(colnames(contr.matrix), colnames(contr.matrix)), function(coef) top_table(efit, coef))
+vs_SE  <- c("CCCe_SE", "CCCc_SE", "ECe_SE", "ECc_SE")
+vs_CLE <- c("CCCe_CLE", "CCCc_CLE", "ECe_CLE", "ECc_CLE")
+
+save_tables(setNames(tables[vs_SE], paste0("PanCK_", vs_SE)), "Figure3ad.xlsx")
+save_tables(setNames(tables[vs_CLE], paste0("PanCK_", vs_CLE)), "Figure3eh.xlsx")
+```
+
+##### Volcano plots (Figure 3a-b vs SE, 3e-f vs CLE)
+```{r, fig.width = 24, fig.height = 6}
+cancer_colours <- c(CCCe = "#868686FF", CCCc = "#3B3B3BFF", ECe = "#CD534CFF", ECc = "#CD534CFF")
+
+volcanos <- function(contrasts, reference, col_reference, xlim, ylim, caption_x, caption_y) {
+  plots <- lapply(contrasts, function(coef) {
+    group <- sub("_.*", "", coef)
+    plot_volcano(tables[[coef]], sig_genes_in(tables[[coef]], volcano_genes_cancer),
+                 col_low = col_reference, col_high = cancer_colours[[group]], xlim = xlim, ylim = ylim,
+                 left = reference, right = group, caption_x = caption_x, caption_y = caption_y,
+                 print_scale = 539 / 1728, label_pt = 4.2, caption_pt = 5)   # 24 in printed 539 pt wide; narrow panels
+  })
+  wrap_plots(plots) + plot_layout(ncol = 4)
+}
+
+Figure3ab <- volcanos(vs_SE, "SE", "#20854EFF", xlim = c(-6, 6), ylim = c(0, 8), caption_x = 4, caption_y = 7)
+Figure3ef <- volcanos(vs_CLE, "CLE", "#EFC000FF", xlim = c(-7, 7), ylim = c(0, 11.5), caption_x = 4.6, caption_y = 9.9)
+Figure3ab
+Figure3ef
+
+save_plot(Figure3ab, "Figure3ab.svg", width = 24, height = 6)
+save_plot(Figure3ef, "Figure3ef.svg", width = 24, height = 6)
+
+# Source data: one workbook per panel, epithelium (left) and cancer (right) sheets;
+# the four volcano plots of each row are, in order, CCCe, CCCc, ECe, ECc
+volcano_panels <- function(row, contrasts, i) setNames(lapply(i, function(k) volcano_source(row[[k]])), contrasts[i])
+save_source_data(volcano_panels(Figure3ab, vs_SE, 1:2), "Figure3a")
+save_source_data(volcano_panels(Figure3ab, vs_SE, 3:4), "Figure3b")
+save_source_data(volcano_panels(Figure3ef, vs_CLE, 1:2), "Figure3e")
+save_source_data(volcano_panels(Figure3ef, vs_CLE, 3:4), "Figure3f")
+```
+
+##### GSEA, MSigDB Hallmarks (Figure 3c-d vs SE, 3g-h vs CLE)
+```{r}
+hallmarks <- msigdb_sets()
+gseaMsigdbr_list <- lapply(setNames(names(tables), names(tables)),
+                           function(coef) gsea_hallmark(ranked_logfc(efit, coef), hallmarks))
+
+# Narrow, tall panels so the text stays readable on the page: names on one line,
+# captions starting at NES = 0, the two legends side by side
+gsea_panels <- function(contrasts, reference) {
+  plots <- lapply(contrasts, function(coef)
+    plot_gsea(gseaMsigdbr_list[[coef]], label_format = 34, right = sub("_.*", "", coef), left = reference,
+              caption_size = 2.2, captions_at_zero = TRUE) +
+      gsea_theme(0.5, 30, nes_breaks = c(-3, 0, 3), nes_limits = c(-4, 4)) +
+      scale_size(range = c(1.5, 5), breaks = scales::breaks_pretty(3)) +
+      theme(legend.box = "horizontal", legend.key.width = unit(0.6, "cm"), legend.title.position = "top",
+            legend.text = element_text(size = 6), axis.text.y = element_text(size = 7.5, lineheight = 0.8)))
+  wrap_plots(plots) + plot_layout(ncol = 4)
+}
+
+gsea_panel <- function(contrasts) lapply(gseaMsigdbr_list[contrasts], gsea_source)
+```
+
+```{r, fig.width = 13, fig.height = 4.5}
+Figure3cd <- gsea_panels(vs_SE, "SE")
+Figure3cd
+
+save_plot(Figure3cd, "Figure3cd.pdf", width = 13, height = 4.5)
+save_plot(Figure3cd, "Figure3cd.svg", width = 13, height = 4.5)
+save_source_data(gsea_panel(c("CCCe_SE", "CCCc_SE")), "Figure3c")
+save_source_data(gsea_panel(c("ECe_SE", "ECc_SE")), "Figure3d")
+```
+
+```{r, fig.width = 13, fig.height = 5.5}
+Figure3gh <- gsea_panels(vs_CLE, "CLE")
+Figure3gh
+
+save_plot(Figure3gh, "Figure3gh.pdf", width = 13, height = 5.5)
+save_plot(Figure3gh, "Figure3gh.svg", width = 13, height = 5.5)
+save_source_data(gsea_panel(c("CCCe_CLE", "CCCc_CLE")), "Figure3g")
+save_source_data(gsea_panel(c("ECe_CLE", "ECc_CLE")), "Figure3h")
+```
+
+##### Workspace
+```{r}
+# All objects of this notebook, to change a figure without re-running it (see save_workspace())
+save_workspace()
+```
