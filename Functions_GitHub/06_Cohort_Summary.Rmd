@@ -15,8 +15,9 @@ source("Setup.R")
 ```{r}
 spe_ruv <- readRDS(file.path(path_rds, "spe_ruv.rds"))
 
-# Order patients by category for the alluvial plot
+# Categories in the display order (SE, ECLE, AE, CCC, EC); patients ordered by category for the alluvial plot
 meta_df <- as.data.frame(colData(spe_ruv))
+meta_df$Category <- order_category(meta_df$Category)
 patient_order <- unique(arrange(meta_df, Category, Patient)$Patient)
 meta_df$Patient <- factor(meta_df$Patient, levels = patient_order)
 colData(spe_ruv) <- DataFrame(meta_df)
@@ -44,10 +45,13 @@ quantile(summary$GenesDetected, c(0.25, 0.50, 0.75))
 
 tab_seg <- as.data.frame(table(summary$Category, summary$Segment))
 colnames(tab_seg) <- c("Category", "Segment", "Count")
+tab_seg$Category <- factor(tab_seg$Category, levels = rev(levels(summary$Category)))   # SE at the top of 1c
 tab_seg
 
 tab_group <- as.data.frame(table(summary$Category, summary$Group))
 colnames(tab_group) <- c("Category", "Group", "Count")
+tab_group$Category <- factor(tab_group$Category, levels = rev(levels(summary$Category)))
+tab_group$Group <- in_order(tab_group$Group, Group)
 tab_group
 
 save_tables(summary[, c("Segment", "Group", "Category", "Scan", "Patient")], "Study_Summary.xlsx",
@@ -101,17 +105,15 @@ save_source_data(list(Segment = mutate(tab_seg, Percent = 100 * Count / ave(Coun
 ```{r, fig.width = 7.2, fig.height = 2.25}
 clinical <- read_xlsx(file.path(path_input, "clinical.xlsx"))
 
-short_names <- c("Atypical endometriosis" = "AE", "Cancer-like endometriosis" = "CLE",
-                 "Clear cell carcinoma" = "CCC", "Endometrioid carcinoma" = "EC", "Simple endometriosis" = "SE")
-
 clinical <- subset(clinical, !(Marker %in% c("PD1", "PD-L1 CPS", "PD-L1 TPS"))) %>%
-  mutate(Marker = factor(Marker, levels = c("PD-L1 IRS Epithelium", "PD-L1 IRS Stroma", "CD3", "CD4", "CD8", "CD68")))
+  mutate(Marker = factor(Marker, levels = c("PD-L1 IRS Epithelium", "PD-L1 IRS Stroma", "CD3", "CD4", "CD8", "CD68")),
+         Category = order_category(Category))
 
 Figure1d <- ggplot(clinical, aes(x = Category, y = Value, fill = Category)) +
   geom_boxplot(linewidth = 0.4, outlier.shape = NA) +
   geom_point(size = 0.8) +
-  scale_fill_manual(values = Category, labels = short_names) +
-  scale_x_discrete(labels = short_names) +
+  scale_fill_manual(values = Category, labels = Category_short) +
+  scale_x_discrete(labels = Category_short) +
   facet_wrap(~Marker, nrow = 1, scales = "free_y", labeller = label_wrap_gen(12)) +  # long marker names on two lines
   theme_classic() +
   theme(legend.position = "none",

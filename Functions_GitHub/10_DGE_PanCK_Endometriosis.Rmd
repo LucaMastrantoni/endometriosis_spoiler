@@ -1,6 +1,6 @@
 ---
 title: "10_DGE_PanCK_Endometriosis"
-subtitle: "PanCK+ AOIs of endometriosis: CLE vs SE and CLE vs AE (Figure 2c-f)"
+subtitle: "PanCK+ AOIs of endometriosis: ECLE vs SE and ECLE vs AE (Figure 2c-f)"
 author: "Luca Mastrantoni"
 output: html_document
 ---
@@ -14,7 +14,7 @@ source("Setup.R")
 
 ```{r}
 spe_ruv <- readRDS(file.path(path_rds, "spe_ruv.rds"))
-endometriosis <- c("Simple endometriosis", "Atypical endometriosis", "Cancer-like endometriosis")
+endometriosis <- c("Simple endometriosis", "Atypical endometriosis", "Endometriosis CLE")
 
 keep <- spe_ruv$Segment == "PanCK" & spe_ruv$Category %in% endometriosis
 spe_sub <- spe_ruv[, keep]
@@ -25,25 +25,25 @@ dge <- spe_to_dge(spe_ruv)[, keep]
 ```{r}
 design <- model.matrix(~0 + Category + ruv_W1 + ruv_W2 + ruv_W3, data = colData(spe_sub)) %>%
   tidy_design("Category")
-contr.matrix <- makeContrasts(CLE_SE = Cancer_like_endometriosis - Simple_endometriosis,
-                              AE_CLE = Cancer_like_endometriosis - Atypical_endometriosis,
+contr.matrix <- makeContrasts(ECLE_SE = Endometriosis_CLE - Simple_endometriosis,
+                              ECLE_AE = Endometriosis_CLE - Atypical_endometriosis,
                               levels = colnames(design))
 
 efit <- fit_dge(dge, design, contr.matrix, block = factor(colData(spe_sub)$Patient))$efit
 
-topTable_CLE_SE <- top_table(efit, "CLE_SE")
-topTable_AE_CLE <- top_table(efit, "AE_CLE")
-save_tables(list(PanCK_CLE_SE = topTable_CLE_SE, PanCK_CLE_AE = topTable_AE_CLE), "Figure2cd.xlsx")
+topTable_ECLE_SE <- top_table(efit, "ECLE_SE")
+topTable_ECLE_AE <- top_table(efit, "ECLE_AE")
+save_tables(list(PanCK_ECLE_SE = topTable_ECLE_SE, PanCK_ECLE_AE = topTable_ECLE_AE), "Figure2cd.xlsx")
 ```
 
 ##### Figure 2c-d: volcano plots
 ```{r, fig.width = 10, fig.height = 9}
-Figure2c <- plot_volcano(topTable_CLE_SE, sig_genes_in(topTable_CLE_SE, volcano_genes_endometriosis),
-                         col_low = "#20854EFF", col_high = "#EFC000FF", xlim = c(-5, 5), ylim = c(0, 6),
-                         left = "SE", right = "CLE", caption_y = 5.5, print_scale = 255 / 720)   # 10 in printed 255 pt wide
-Figure2d <- plot_volcano(topTable_AE_CLE, sig_genes_in(topTable_AE_CLE, volcano_genes_endometriosis),
-                         col_low = "#0073C2FF", col_high = "#EFC000FF", xlim = c(-5, 5), ylim = c(0, 7),
-                         left = "AE", right = "CLE", caption_y = 6.5, print_scale = 255 / 720)
+Figure2c <- plot_volcano(topTable_ECLE_SE, sig_genes_in(topTable_ECLE_SE, volcano_genes_endometriosis),
+                         col_low = Category[["Simple endometriosis"]], col_high = Category[["Endometriosis CLE"]], xlim = c(-5, 5), ylim = c(0, 6),
+                         left = "SE", right = "ECLE", caption_y = 5.5, print_scale = 255 / 720)   # 10 in printed 255 pt wide
+Figure2d <- plot_volcano(topTable_ECLE_AE, sig_genes_in(topTable_ECLE_AE, volcano_genes_endometriosis),
+                         col_low = Category[["Atypical endometriosis"]], col_high = Category[["Endometriosis CLE"]], xlim = c(-5, 5), ylim = c(0, 7),
+                         left = "AE", right = "ECLE", caption_y = 6.5, print_scale = 255 / 720)
 Figure2c
 Figure2d
 
@@ -55,22 +55,22 @@ save_source_data(volcano_source(Figure2d), "Figure2d")
 
 ##### Figure 2e: GSEA, MSigDB Hallmarks
 ```{r, fig.width = 6.5, fig.height = 7.9}
-gene_lists <- list("CLE vs SE" = ranked_logfc(efit, "CLE_SE"),
-                   "AE vs CLE" = ranked_logfc(efit, "AE_CLE"))
+gene_lists <- list("ECLE vs SE" = ranked_logfc(efit, "ECLE_SE"),
+                   "ECLE vs AE" = ranked_logfc(efit, "ECLE_AE"))
 
 gseaMsigdbr_list <- lapply(gene_lists, gsea_hallmark)
 
 # Narrow, tall panels so the text stays readable on the page (gsea_theme() in Helpers.R)
-Figure2e <- plot_grid(plot_gsea(gseaMsigdbr_list[["CLE vs SE"]], label_format = 26, right = "CLE", left = "SE",
+Figure2e <- plot_grid(plot_gsea(gseaMsigdbr_list[["ECLE vs SE"]], label_format = 26, right = "ECLE", left = "SE",
                                 x_left = -2.5, x_right = 3.2, caption_size = 2.4) + gsea_theme(0.5, 22),
-                      plot_gsea(gseaMsigdbr_list[["AE vs CLE"]], label_format = 26, right = "CLE", left = "AE",
+                      plot_gsea(gseaMsigdbr_list[["ECLE vs AE"]], label_format = 26, right = "ECLE", left = "AE",
                                 x_left = -2.5, x_right = 3.2, caption_size = 2.4) + gsea_theme(0.5, 22),
                       nrow = 1)
 Figure2e
 
 save_plot(Figure2e, "Figure2e.svg", width = 6.5, height = 7.9)
-save_source_data(list(CLE_vs_SE = gsea_source(gseaMsigdbr_list[["CLE vs SE"]]),
-                      CLE_vs_AE = gsea_source(gseaMsigdbr_list[["AE vs CLE"]])),
+save_source_data(list(ECLE_vs_SE = gsea_source(gseaMsigdbr_list[["ECLE vs SE"]]),
+                      ECLE_vs_AE = gsea_source(gseaMsigdbr_list[["ECLE vs AE"]])),
                  "Figure2e")
 ```
 
@@ -78,20 +78,20 @@ save_source_data(list(CLE_vs_SE = gsea_source(gseaMsigdbr_list[["CLE vs SE"]]),
 ```{r, fig.width = 9, fig.height = 8.8}
 gseaGO_list <- lapply(gene_lists, gsea_go)
 
-Figure2f <- plot_grid(plot_gsea(gseaGO_list[["CLE vs SE"]], show = 40, label_format = 60,
-                                right = "CLE", left = "SE", x_right = 3, x_left = -3, caption_size = 2.4) +
+Figure2f <- plot_grid(plot_gsea(gseaGO_list[["ECLE vs SE"]], show = 40, label_format = 60,
+                                right = "ECLE", left = "SE", x_right = 3, x_left = -3, caption_size = 2.4) +
                         gsea_theme(0.75, 30, nes_breaks = c(-3, 0, 3), nes_limits = c(-3.6, 3.6)) +
                         scale_size(range = c(1.5, 5)),
-                      plot_gsea(gseaGO_list[["AE vs CLE"]], show = 40, label_format = 60,
-                                right = "CLE", left = "AE", x_right = 3, x_left = -3, caption_size = 2.4) +
+                      plot_gsea(gseaGO_list[["ECLE vs AE"]], show = 40, label_format = 60,
+                                right = "ECLE", left = "AE", x_right = 3, x_left = -3, caption_size = 2.4) +
                         gsea_theme(0.75, 30, nes_breaks = c(-3, 0, 3), nes_limits = c(-3.6, 3.6)) +
                         scale_size(range = c(1.5, 5)),
                       nrow = 1)
 Figure2f
 
 save_plot(Figure2f, "Figure2f.svg", width = 9, height = 8.8)
-save_source_data(list(CLE_vs_SE = gsea_source(gseaGO_list[["CLE vs SE"]], show = 40),
-                      CLE_vs_AE = gsea_source(gseaGO_list[["AE vs CLE"]], show = 40)),
+save_source_data(list(ECLE_vs_SE = gsea_source(gseaGO_list[["ECLE vs SE"]], show = 40),
+                      ECLE_vs_AE = gsea_source(gseaGO_list[["ECLE vs AE"]], show = 40)),
                  "Figure2f")
 ```
 

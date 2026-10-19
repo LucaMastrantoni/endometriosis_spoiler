@@ -1,6 +1,6 @@
 ---
 title: "21_Opal"
-subtitle: "Multiplex immunofluorescence: MUC5B+ epithelium and CD66b+ neutrophils in CLE vs SE (Figure 8b, 8e)"
+subtitle: "Multiplex immunofluorescence: MUC5B+ epithelium and CD66b+ neutrophils in ECLE vs SE (Figure 8b, 8e)"
 author: "Luca Mastrantoni"
 output: html_document
 ---
@@ -21,6 +21,8 @@ opal <- read_xlsx(file.path(path_input, "opal", "ROI_Compositions_public.xlsx"))
 
 t.test(PanCK_MUC5B ~ Category, opal)
 t.test(PanCK_MUC5Bn ~ Category, opal)
+
+opal$Category <- in_order(opal$Category, Category_abbr)   # SE, then ECLE (after the tests: same sign as before)
 ```
 
 ```{r}
@@ -31,7 +33,7 @@ opal_barplot <- function(y, y_label) {
     ggbeeswarm::geom_beeswarm(aes(x = Category, y = .data[[y]]), dodge.width = 0, cex = 4, size = 4,
                               shape = 21, fill = "darkgray", color = "black", alpha = 0.8) +
     labs(y = y_label, x = "") +
-    scale_fill_manual(values = c("CLE" = "#EFC000FF", "SE" = "#20854EFF")) +
+    scale_fill_manual(values = Category_abbr) +
     theme(legend.position = "none")
 }
 ```

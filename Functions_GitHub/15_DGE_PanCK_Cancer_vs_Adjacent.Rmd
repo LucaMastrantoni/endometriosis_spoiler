@@ -48,7 +48,7 @@ cancer_vs_adjacent <- function(category, short, xlim, caption_x) {
   sig_down <- tt[tt$adj.P.Val < 0.05 & tt$logFC < -1.5, ]
   top_genes <- unique(c(rownames(sig_up[order(-sig_up$logFC), ])[1:min(15, nrow(sig_up))],
                         rownames(sig_down[order(sig_down$logFC), ])[1:min(15, nrow(sig_down))]))
-  volcano <- plot_volcano(tt, top_genes, col_low = "#79AF97FF", col_high = "#B24745FF", xlim = xlim, ylim = c(0, 5),
+  volcano <- plot_volcano(tt, top_genes, col_low = Group[["Epithelial"]], col_high = Group[["Cancer"]], xlim = xlim, ylim = c(0, 5),
                           left = paste0(short, "e"), right = paste0(short, "c"), caption_x = caption_x, caption_y = 4.1,
                           print_scale = 540 / 1872, label_pt = 4.2)   # the 26 in figure prints 540 pt wide
 

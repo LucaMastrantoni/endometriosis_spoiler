@@ -71,7 +71,7 @@ prop_results <- test_proportions(prop, meta$Category, meta$Patient)
 save_tables(prop_results, "Figure6h.xlsx", rownames_to = NULL)
 
 Figure6gh <- plot_grid(plot_prop_boxplot(prop, meta, Cell_Types),
-                       plot_prop_bubbles(prop_results, border_fdr = 0.1),  # bordered: FDR < 0.1
+                       plot_prop_bubbles(prop_results, Cell_Types, border_fdr = 0.1),  # bordered: FDR < 0.1
                        ncol = 2, rel_widths = c(1.35, 1))   # wider boxplots; the row prints 536 pt wide
 Figure6gh
 

@@ -21,7 +21,7 @@ spe <- readRDS(file.path(path_rds, "spe.rds"))
 # Relative log expression of raw and logCPM counts, and PCA by category, scan, segment and group
 plotRLExpr(spe, assay = 1, ordannots = "Patient") + xlab("") + ylab("RLE") + theme_classic()
 plotRLExpr(spe, assay = 2, ordannots = "Patient", fill = Category) +
-  scale_fill_manual(values = Category) + xlab("") + ylab("RLE") + theme_classic()
+  scale_fill_manual(values = Category, breaks = names(Category)) + xlab("") + ylab("RLE") + theme_classic()
 
 set.seed(100)
 spe <- scater::runPCA(spe)
@@ -33,8 +33,8 @@ pca_by <- function(var, palette) {
     palette +
     theme_classic()
 }
-plot_grid(pca_by("Category", scale_fill_manual(values = Category)),
-          pca_by("Scan", scale_fill_nejm()),
+plot_grid(pca_by("Category", scale_fill_manual(values = Category, breaks = names(Category))),
+          pca_by("Scan", scale_fill_manual(values = unname(Muted))),
           pca_by("Segment", scale_fill_manual(values = Segment)),
           pca_by("Group", scale_fill_manual(values = Group)),
           ncol = 2, align = "hv", axis = "r")
@@ -45,8 +45,8 @@ plotScreePCA(spe, precomputed = pca_results) + theme_classic() + theme(axis.text
 ```{r}
 spe <- geomxNorm(spe, method = "TMM")
 
-plotRLExpr(spe, assay = 2, fill = Category) + scale_fill_manual(values = Category) + xlab("") + ylab("RLE") + theme_classic()
-plotRLExpr(spe, assay = 2, fill = Scan) + scale_fill_nejm() + xlab("") + ylab("RLE") + theme_classic()
+plotRLExpr(spe, assay = 2, fill = Category) + scale_fill_manual(values = Category, breaks = names(Category)) + xlab("") + ylab("RLE") + theme_classic()
+plotRLExpr(spe, assay = 2, fill = Scan) + scale_fill_manual(values = unname(Muted)) + xlab("") + ylab("RLE") + theme_classic()
 ```
 
 ```{r, fig.width = 10, fig.height = 4.5}
@@ -93,7 +93,7 @@ pairs_plot <- function(var, palette, axis = NULL) {
   scatter_plot <- function(x, y) {
     ggplot(pca_data, aes_string(x = x, y = y, fill = var)) +
       geom_point(shape = 21, size = 3, alpha = 0.9, color = "black") +
-      scale_fill_manual(values = palette) +
+      scale_fill_manual(values = palette, breaks = names(palette)) +
       theme_classic() +
       labs(x = pc_labels[as.numeric(sub("PC", "", x))],
            y = pc_labels[as.numeric(sub("PC", "", y))])
@@ -117,7 +117,7 @@ group_plot <- pairs_plot("Group", Group, axis = "l")
 # Supplementary Figure 3b: RLE after TMM + RUV4
 RLE_cat <- plotRLExpr(spe_ruv, ordannots = "Patient", assay = 2, color = "black", fill = Category) +
   ggtitle("") +
-  scale_fill_manual(values = Category) +
+  scale_fill_manual(values = Category, breaks = names(Category)) +
   ylab("RLE") +
   xlab("") +
   theme_classic() +

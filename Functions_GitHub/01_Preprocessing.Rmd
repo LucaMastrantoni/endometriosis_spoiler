@@ -168,7 +168,7 @@ g <- ggplot(pData(target_demoData), aes(x = DetectionThreshold)) +
   theme_classic() +
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
   labs(x = "Gene Detection Rate", y = "Samples, #", fill = "Category") +
-  scale_fill_manual(values = Category)
+  scale_fill_manual(values = Category, breaks = names(Category))
 
 h <- ggplot(pData(target_demoData), aes(x = DetectionThreshold)) +
   geom_bar(aes(fill = Segment), color = "black") +
@@ -203,7 +203,7 @@ rownames(plot_detect) <- plot_detect$Freq
 i <- ggplot(plot_detect, aes(x = as.factor(Freq), y = Rate, fill = Rate)) +
   geom_bar(stat = "identity", color = "black") +
   geom_text(aes(label = formatC(Number, format = "d", big.mark = " ")), vjust = -1, color = "black", size = 4) +
-  scale_fill_viridis_c(option = "magma", direction = 1, limits = c(0, 1), labels = scales::percent) +
+  scale_fill_gradientn(colours = seq_warm, limits = c(0, 1), labels = scales::percent) +
   theme_classic() +
   scale_y_continuous(labels = scales::percent, limits = c(0, 1.1), expand = expansion(mult = c(0, 0))) +
   labs(x = "% of Segments", y = "Genes Detected, % of Panel > LOQ")
@@ -254,7 +254,7 @@ plt1 <- ggplot(Stat_data_m, aes(x = Value, fill = Statistic)) +
   theme_classic() +
   scale_x_continuous(trans = "log2") +
   facet_wrap(~Annotation, nrow = 1) +
-  scale_fill_brewer(palette = 4, type = "qual") +
+  scale_fill_manual(values = QC_stat) +
   labs(x = "Counts", y = "Segments, #")
 
 plt2 <- ggplot(Stat_data, aes(x = NegProbe, y = Q3, color = Annotation)) +

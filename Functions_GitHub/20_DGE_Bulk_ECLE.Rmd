@@ -1,6 +1,6 @@
 ---
-title: "20_DGE_Bulk_CLE"
-subtitle: "All AOIs of endometriosis: CLE vs SE and AE combined (Figure 7a-d)"
+title: "20_DGE_Bulk_ECLE"
+subtitle: "All AOIs of endometriosis: ECLE vs SE and AE combined (Figure 7a-d)"
 author: "Luca Mastrantoni"
 output: html_document
 ---
@@ -14,7 +14,7 @@ source("Setup.R")
 
 ```{r}
 spe_ruv <- readRDS(file.path(path_rds, "spe_ruv.rds"))
-endometriosis <- c("Simple endometriosis", "Atypical endometriosis", "Cancer-like endometriosis")
+endometriosis <- c("Simple endometriosis", "Atypical endometriosis", "Endometriosis CLE")
 
 # All segments (PanCK, CD3, CD68) of the endometriosis categories
 keep <- spe_ruv$Category %in% endometriosis
@@ -26,13 +26,13 @@ dge <- spe_to_dge(spe_ruv)[, keep]
 ```{r}
 design <- model.matrix(~0 + Category + ruv_W1 + ruv_W2 + ruv_W3, data = colData(spe_sub)) %>%
   tidy_design("Category")
-contr.matrix <- makeContrasts(CLE_SE = Cancer_like_endometriosis - (Simple_endometriosis + Atypical_endometriosis)/2,
+contr.matrix <- makeContrasts(ECLE_SE = Endometriosis_CLE - (Simple_endometriosis + Atypical_endometriosis)/2,
                               levels = colnames(design))
 
 efit <- fit_dge(dge, design, contr.matrix, block = factor(colData(spe_sub)$Patient))$efit
 
-topTable_CLE <- top_table(efit, "CLE_SE")
-save_tables(mutate(topTable_CLE, Category = "CLE"), "Figure7.xlsx")
+topTable_ECLE <- top_table(efit, "ECLE_SE")
+save_tables(mutate(topTable_ECLE, Category = "ECLE"), "Figure7.xlsx")
 ```
 
 ##### Figure 7a
@@ -40,8 +40,8 @@ save_tables(mutate(topTable_CLE, Category = "CLE"), "Figure7.xlsx")
 label_genes <- c("S100A9", "S100A8", "S100A7", "HMOX1", "FN1", "ELL2", "TNIP3", "DEFB4B", "C1S", "ALOX5", "CXCL6", "NAMPT",
                  "TNFRSF21", "ADAM28", "CD200", "IGFR2", "TSPAN8")
 
-Figure7a <- plot_volcano(topTable_CLE, sig_genes_in(topTable_CLE, label_genes, fc = 0.56),
-                         col_low = "#20854EFF", col_high = "#EFC000FF", xlim = c(0, 4), ylim = c(0, 3),
+Figure7a <- plot_volcano(topTable_ECLE, sig_genes_in(topTable_ECLE, label_genes, fc = 0.56),
+                         col_low = Category[["Simple endometriosis"]], col_high = Category[["Endometriosis CLE"]], xlim = c(0, 4), ylim = c(0, 3),
                          fc_dashed = 0.56, fc_dotted = 1.5, print_scale = 170 / 360)   # 5 in printed 170 pt wide
 Figure7a
 
@@ -51,43 +51,43 @@ save_source_data(volcano_source(Figure7a), "Figure7a")
 
 ##### Figure 7b-c: GSEA, MSigDB Hallmarks and GO biological process
 ```{r, fig.width = 3.5, fig.height = 4.8}
-gene_list <- ranked_logfc(efit, "CLE_SE")
+gene_list <- ranked_logfc(efit, "ECLE_SE")
 
-gseaMsigdbr_CLE <- gsea_hallmark(gene_list)
+gseaMsigdbr_ECLE <- gsea_hallmark(gene_list)
 # Narrow, tall panels with wrapped terms so the text stays readable on the page (as Figure 2e-f)
-Figure7b <- plot_gsea(gseaMsigdbr_CLE, label_format = 26, right = "CLE", x_right = 1, caption_size = 2.4) +
+Figure7b <- plot_gsea(gseaMsigdbr_ECLE, label_format = 26, right = "ECLE", x_right = 1, caption_size = 2.4) +
   gsea_theme(0.5, 10, nes_breaks = c(0, 1, 2), nes_limits = c(0, 2.6))
 Figure7b
 
 save_plot(Figure7b, "Figure7b.svg", width = 3.5, height = 4.8)
-save_source_data(gsea_source(gseaMsigdbr_CLE), "Figure7b")
+save_source_data(gsea_source(gseaMsigdbr_ECLE), "Figure7b")
 ```
 
 ```{r, fig.width = 4.4, fig.height = 7.8}
-# GO terms enriched in CLE only (positive NES)
-gseaGO_CLE <- gsea_go(gene_list)
-gseaGO_CLE@result <- filter(gseaGO_CLE@result, NES > 0)
-Figure7c <- plot_gsea(gseaGO_CLE, label_format = 45, right = "CLE", x_right = 1, caption_size = 2.4) +
+# GO terms enriched in ECLE only (positive NES)
+gseaGO_ECLE <- gsea_go(gene_list)
+gseaGO_ECLE@result <- filter(gseaGO_ECLE@result, NES > 0)
+Figure7c <- plot_gsea(gseaGO_ECLE, label_format = 45, right = "ECLE", x_right = 1, caption_size = 2.4) +
   gsea_theme(0.6, 10, nes_breaks = c(0, 1, 2), nes_limits = c(0, 2.15)) + scale_size(range = c(1.5, 5))
 Figure7c
 
 save_plot(Figure7c, "Figure7c.svg", width = 4.4, height = 7.8)
-save_source_data(gsea_source(gseaGO_CLE), "Figure7c")
+save_source_data(gsea_source(gseaGO_ECLE), "Figure7c")
 ```
 
-##### Figure 7d: over-representation of GO terms among genes up in CLE
+##### Figure 7d: over-representation of GO terms among genes up in ECLE
 ```{r, fig.width = 9, fig.height = 5.2}
-sig_cle <- rownames(subset(topTable_CLE, adj.P.Val < 0.05 & logFC > 1.5))
-entrez_cle <- unique(pull(bitr(sig_cle, fromType = "SYMBOL", toType = "ENTREZID", OrgDb = org.Hs.eg.db), ENTREZID))
+sig_ecle <- rownames(subset(topTable_ECLE, adj.P.Val < 0.05 & logFC > 1.5))
+entrez_ecle <- unique(pull(bitr(sig_ecle, fromType = "SYMBOL", toType = "ENTREZID", OrgDb = org.Hs.eg.db), ENTREZID))
 
-ego_cle <- enrichGO(entrez_cle, OrgDb = "org.Hs.eg.db", ont = "BP", readable = TRUE,
+ego_ecle <- enrichGO(entrez_ecle, OrgDb = "org.Hs.eg.db", ont = "BP", readable = TRUE,
                     pAdjustMethod = "BH", pvalueCutoff = 0.05, qvalueCutoff = 0.05)
-ego_cle@result$Description <- str_to_title(ego_cle@result$Description)
+ego_ecle@result$Description <- str_to_title(ego_ecle@result$Description)
 # enrichGO returns the genes of a term in a run-dependent order; sorted, so the network is the same every run
-ego_cle@result$geneID <- vapply(strsplit(ego_cle@result$geneID, "/"), function(g) paste(sort(g), collapse = "/"), "")
+ego_ecle@result$geneID <- vapply(strsplit(ego_ecle@result$geneID, "/"), function(g) paste(sort(g), collapse = "/"), "")
 
 set.seed(1)  # the network layout is random; fixed for a reproducible figure
-Figure7d <- cnetplot(ego_cle, showCategory = 20) +
+Figure7d <- cnetplot(ego_ecle, showCategory = 20, color_category = GO_term_node) +
   guides(size = guide_legend(title = "Number of genes")) +
   theme(legend.text = element_text(size = 10), legend.title = element_text(size = 11))
 # larger node labels (the label layer has no size argument in cnetplot)
@@ -95,7 +95,7 @@ for (i in seq_along(Figure7d$layers)) if (inherits(Figure7d$layers[[i]]$geom, "G
 Figure7d
 
 save_plot(Figure7d, "Figure7d.svg", width = 9, height = 5.2)
-save_source_data(gsea_source(ego_cle, show = 20), "Figure7d")
+save_source_data(gsea_source(ego_ecle, show = 20), "Figure7d")
 ```
 
 ##### Workspace

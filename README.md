@@ -47,16 +47,16 @@ Notebooks 01-05 build the objects used by the others. Results are written to
 | 07_Segment_Markers | Segment markers | Fig. 1e |
 | 08_PanCK_PCA | PCA, correlation | Fig. 2a-b, Supp. Table 4 |
 | 09_PanCK_Clustering | Clustering resolutions | Supp. Fig. 4 |
-| 10_DGE_PanCK_Endometriosis | CLE vs SE, CLE vs AE | Fig. 2c-f |
+| 10_DGE_PanCK_Endometriosis | ECLE vs SE, ECLE vs AE | Fig. 2c-f |
 | 11_DGE_PanCK_Endometriosis_Sensitivity | Adjusted for menstrual phase, COC | Supp. Fig. 5 |
-| 12_DGE_PanCK_Cancer | Carcinoma vs SE and vs CLE | Fig. 3 |
+| 12_DGE_PanCK_Cancer | Carcinoma vs SE and vs ECLE | Fig. 3 |
 | 13_PanCK_Signatures | One-vs-all genes, module scores | Fig. 4 |
 | 14_Trajectory | Palantir pseudotime and fates | Fig. 5 |
 | 15_DGE_PanCK_Cancer_vs_Adjacent | Cancer vs adjacent epithelium | Supp. Fig. 6 |
-| 16_DGE_CD68 | CD68+ CLE vs SE, CLE vs AE | Fig. 6a-b |
+| 16_DGE_CD68 | CD68+ ECLE vs SE, ECLE vs AE | Fig. 6a-b |
 | 17_Deconvolution_CD68 | Macrophage subtypes | Fig. 6c-e, Supp. Fig. 7 |
-| 18_DGE_CD3 | CD3+ CLE vs SE, CLE vs AE | Supp. Fig. 8 |
+| 18_DGE_CD3 | CD3+ ECLE vs SE, ECLE vs AE | Supp. Fig. 8 |
 | 19_Deconvolution_CD3 | T-cell subtypes (safeTME) | Fig. 6f-h, Supp. Fig. 9 |
-| 20_DGE_Bulk_CLE | All AOIs, CLE vs SE + AE | Fig. 7a-d |
+| 20_DGE_Bulk_ECLE | All AOIs, ECLE vs SE + AE | Fig. 7a-d |
 | 21_Opal | Multiplex immunofluorescence | Fig. 8b, 8e |
 | 22_Source_Data | All source data | `Source_Data.xlsx` |

@@ -194,7 +194,7 @@ spe_to_dge <- function(spe) {
 }
 
 # Strip the factor name from design columns and make them syntactic
-# ("Cancer-like endometriosis" -> "Cancer_like_endometriosis").
+# ("Endometriosis CLE" -> "Endometriosis_CLE").
 tidy_design <- function(design, prefix) {
   colnames(design) <- gsub(prefix, "", colnames(design))
   colnames(design) <- gsub(" ", "_", colnames(design))
@@ -239,7 +239,7 @@ plot_volcano <- function(tt, label_genes, col_low, col_high, xlim, ylim,
                          fc_dashed = 1.5, fc_dotted = 1.5, fdr = 0.05,
                          left = NULL, right = NULL, caption_x = 4.5, caption_y = NULL,
                          print_scale = 0.5, label_pt = 5, axis_pt = 5.5, title_pt = 6.5, caption_pt = 6,
-                         box_padding = 0.35, max_overlaps = Inf) {
+                         box_padding = 0.35, max_overlaps = Inf, repel_iter = 2e5) {
   to_mm <- function(pt) pt / print_scale / .pt   # geom text sizes are in mm
   text_size <- to_mm(label_pt); caption_size <- to_mm(caption_pt)
   df <- tt %>%
@@ -273,12 +273,13 @@ plot_volcano <- function(tt, label_genes, col_low, col_high, xlim, ylim,
   # Gene labels last, on top of the points and the dashed lines: a white halo keeps them
   # legible; every moved label gets a grey leader line; they avoid only the labelled and the
   # significant points (the faint cloud below the FDR line is free space), which lets the
-  # repulsion settle without overlaps; the fixed seed keeps the placement the same between runs
+  # repulsion settle without overlaps. The fixed seed and a fixed number of iterations (no time
+  # limit, which made the placement depend on the speed of the machine) give the same labels every run
   p + geom_text_repel(data = function(d) d[d$label != "" | d$adj.P.Val < fdr, ], aes(label = label),
                       size = text_size, max.overlaps = max_overlaps,
                       bg.color = "white", bg.r = 0.12, box.padding = box_padding, point.padding = 0.15,
                       min.segment.length = 0, segment.color = "grey35", segment.size = 0.3,
-                      force = 3, force_pull = 0.5, max.time = 30, max.iter = 1e7, seed = 42) +
+                      force = 3, force_pull = 0.5, max.time = Inf, max.iter = repel_iter, seed = 42) +
     theme(legend.position = "none")
 }
 
@@ -391,7 +392,7 @@ plot_prop_bars <- function(prop, palette, legend_title = "Cell types") {
   ggplot(bars, aes(samples, prop, fill = CellTypes)) +
     geom_bar(stat = "identity", position = "stack", color = "black", width = .7) +
     coord_flip() +
-    scale_fill_manual(name = legend_title, values = palette) +
+    scale_fill_manual(name = legend_title, values = palette, breaks = names(palette)) +
     theme_classic() +
     ylab("Proportion") + xlab("") +
     theme(legend.position = "right",
@@ -401,11 +402,11 @@ plot_prop_bars <- function(prop, palette, legend_title = "Cell types") {
 
 # Heatmap of cell-type proportions annotated by Category (Supp Fig 7b / 9b).
 plot_prop_heatmap <- function(prop, category) {
-  annotation_col <- data.frame(Category = category)
+  annotation_col <- data.frame(Category = order_category(category))   # legend in the category order
   rownames(annotation_col) <- colnames(prop)
   pheatmap(prop,
            annotation_col = annotation_col, annotation_colors = list(Category = Category),
-           color = colorRampPalette(c("white", "#2166ac", "darkblue"))(100), border_color = "black",
+           color = colorRampPalette(c("white", "#6F93B8", navy))(100), border_color = "black",
            show_colnames = FALSE, name = "%")
 }
 
@@ -443,7 +444,7 @@ plot_florets <- function(prop, pc, palette, petal = 0.1) {
     geom_arc_bar(aes(x0 = PC1, y0 = PC2, r0 = 0, r = r, start = start, end = end, fill = celltype),
                  color = "black", alpha = 0.8, expand = FALSE) +
     coord_equal(xlim = lims$x, ylim = lims$y) +
-    scale_fill_manual(name = "Cell types", values = palette) +
+    scale_fill_manual(name = "Cell types", values = palette, breaks = names(palette)) +
     theme_classic(base_size = 11) +
     theme(axis.ticks = element_blank(), legend.position = "right",
           legend.title.position = "top", legend.title = element_text(hjust = 0)) +
@@ -453,7 +454,7 @@ plot_florets <- function(prop, pc, palette, petal = 0.1) {
 # PCA of the AOIs coloured by Category (Fig 6c / 6f, right); same equal-axis
 # geometry and legend style as the floret plot it sits next to.
 plot_pca_category <- function(pc, category) {
-  pc_df <- merge(pc, data.frame(Category = category, row.names = rownames(pc)), by = "row.names")
+  pc_df <- merge(pc, data.frame(Category = order_category(category), row.names = rownames(pc)), by = "row.names")
   lims <- square_limits(pc)
   ggplot(pc_df, aes(x = PC1, y = PC2, fill = Category)) +
     geom_point(size = 3, shape = 21, color = "black") +
@@ -487,32 +488,31 @@ plot_pca_pair <- function(prop, pc, palette, category, petal = 0.07, panel = 2.7
         fixed_panels(plot_pca_category(pc, category) + style, panel, panel, legend_w), size = "max")
 }
 
-# Boxplots of cell-type proportions (Fig 6d / 6g), one facet per Category, cell-type legend on the right.
+# Boxplots of cell-type proportions (Fig 6d / 6g), one facet per Category, cell types named under each box.
 # Points and box lines as Figure 1d (black dot per ROI, no outlier markers), sized for the 12.75 in
 # export printed 536 pt wide. The box width scales with the number of cell types, so 6d (5) and
 # 6g (3) have boxes of the same printed width.
-plot_prop_boxplot <- function(prop, meta, palette) {
+plot_prop_boxplot <- function(prop, meta, palette, legend = TRUE) {
   df <- prop %>%
     as.data.frame() %>%
     rownames_to_column(var = "CellTypes") %>%
     gather(key = "samples_id", value = "prop", -CellTypes) %>%
-    left_join(rownames_to_column(meta, var = "samples_id"), by = "samples_id")
-  short_names <- c("Atypical endometriosis" = "AE", "Cancer-like endometriosis" = "CLE",
-                   "Clear cell carcinoma" = "CCC", "Endometrioid carcinoma" = "EC", "Simple endometriosis" = "SE")
+    left_join(rownames_to_column(meta, var = "samples_id"), by = "samples_id") %>%
+    mutate(Category = order_category(Category), CellTypes = in_order(CellTypes, palette))
   box_width <- 0.75 * nrow(prop) / 5
   ggplot(df, aes(CellTypes, prop, fill = CellTypes)) +
     geom_boxplot(width = box_width, linewidth = 0.45, outlier.shape = NA) +
     geom_point(size = 0.9) +
     # every facet has its own y axis line and ticks; the numbers only on the first one
-    facet_wrap(~ Category, nrow = 1, labeller = as_labeller(short_names), axes = "all_y", axis.labels = "margins") +
+    facet_wrap(~ Category, nrow = 1, labeller = as_labeller(Category_short), axes = "all_y", axis.labels = "margins") +
     theme_classic() +
     xlab("") +
     ylab("Proportion") +
     scale_fill_manual(name = "Cell types", values = palette) +
-    theme(axis.text.x = element_blank(),   # cell types named by the legend; ticks kept
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 8, colour = "black"),
           strip.background = element_blank(), strip.text = element_text(face = "bold", size = 10),
           panel.spacing.x = unit(2, "mm"),
-          legend.position = "right", legend.title = element_text(size = 10),
+          legend.position = if (legend) "right" else "none", legend.title = element_text(size = 10),
           legend.text = element_text(size = 9), legend.key.size = unit(0.35, "cm"),
           legend.margin = margin(0, 0, 0, 0)) +
     guides(fill = guide_legend(ncol = 1))
@@ -520,9 +520,14 @@ plot_prop_boxplot <- function(prop, meta, palette) {
 
 # Differential proportions between all pairs of categories: arcsine-square-root
 # transformed proportions, limma with patient blocking (duplicateCorrelation).
-test_proportions <- function(prop, category, patient) {
+test_proportions <- function(prop, category, patient,
+                             levels = c("Atypical endometriosis", "Endometriosis CLE", "Clear cell carcinoma",
+                                        "Endometrioid carcinoma", "Simple endometriosis")) {
   prop_list <- convertDataToList(x = prop, data.type = "proportions", transform = "asin")
-  grp <- factor(gsub("[- ]", "_", category))
+  # Contrasts are all pairs in `levels` order (first minus second): the order of the published
+  # analysis, so the pairs and the signs of the log2FC are the same
+  stopifnot(all(category %in% levels))
+  grp <- factor(gsub("[- ]", "_", category), levels = gsub("[- ]", "_", intersect(levels, category)))
   pt  <- factor(patient)
 
   design <- model.matrix(~ 0 + grp)
@@ -543,14 +548,16 @@ test_proportions <- function(prop, category, patient) {
   results$log10FDR <- -log(results$adj.P.Val, 10)
   results <- results %>%
     mutate(Contrast = gsub("_", " ", Contrast),
-           Contrast = gsub("-", " - ", Contrast))
+           Contrast = gsub("-", " - ", Contrast),
+           Contrast = factor(Contrast, levels = unique(Contrast)))   # rows of Fig 6e / 6h in the contrast order
   rownames(results) <- NULL
   results
 }
 
 # Bubble plot of the pairwise tests (Fig 6e / 6h). Bubbles with FDR below
 # `border_fdr` get a black border. Legend order fixed: log2FC, then -log10(FDR).
-plot_prop_bubbles <- function(results, border_fdr = 0.1) {
+plot_prop_bubbles <- function(results, palette, border_fdr = 0.1) {
+  results$CellType <- in_order(results$CellType, palette)   # cell types in the palette order, as in the boxplots
   ggplot(results, aes(x = Contrast, y = CellType, size = log10FDR, fill = logFC)) +
     geom_point(shape = 21, color = ifelse(results$adj.P.Val < border_fdr, "black", "NA")) +
     theme_classic() +
@@ -561,6 +568,6 @@ plot_prop_bubbles <- function(results, border_fdr = 0.1) {
     xlab("") + ylab("") +
     labs(size = "-log10(FDR)") +
     coord_flip() +
-    scale_fill_gradient2(name = "log2FC", low = "#003C67FF", mid = "white", high = "#A73030FF", midpoint = 0) +
+    scale_fill_gradient2(name = "log2FC", low = div_low, mid = div_mid, high = div_high, midpoint = 0) +
     guides(fill = guide_colourbar(order = 1, barheight = unit(1.5, "cm")), size = guide_legend(order = 2))
 }

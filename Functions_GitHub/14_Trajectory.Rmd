@@ -55,7 +55,7 @@ save_map <- function(g, file) {
 ```
 
 ```{r, fig.width = 9, fig.height = 5}
-Figure5a <- fixed_map(embedding("Category_Group", scale_fill_manual(values = Category_Group), size = 5.5) +
+Figure5a <- fixed_map(embedding("Category_Group", scale_fill_manual(values = Category_Group, breaks = names(Category_Group)), size = 5.5) +
                         theme(legend.key.height = unit(0.45, "cm")) +
                         theme_umap_arrows(x_label = "MS1", y_label = "MS2", text_size = 16,
                                           anchor_x = unit(8, "mm"), anchor_y = unit(8, "mm"),
@@ -87,10 +87,10 @@ ps <- mye_small@misc$Palantir$Pseudotime
 mye_small@meta.data[, colnames(ps)] <- ps
 
 # b = pseudotime and entropy side by side, c = fate probabilities (EC, CCC) side by side, placed below b
-magma <- scale_fill_viridis_c(option = "A"); viridis <- scale_fill_viridis_c(option = "D")
-Figure5b <- cbind(fixed_map(embedding("Pseudotime", magma, "Pseudotime")),
-                  fixed_map(embedding("Entropy", viridis, "Entropy")), size = "max")
-Figure5c <- cbind(fixed_map(embedding("EC", magma, "EC")), fixed_map(embedding("CCC", magma, "CCC")), size = "max")
+warm <- scale_fill_gradientn(colours = seq_warm); cool <- scale_fill_gradientn(colours = seq_cool)
+Figure5b <- cbind(fixed_map(embedding("Pseudotime", warm, "Pseudotime")),
+                  fixed_map(embedding("Entropy", cool, "Entropy")), size = "max")
+Figure5c <- cbind(fixed_map(embedding("EC", warm, "EC")), fixed_map(embedding("CCC", warm, "CCC")), size = "max")
 grid.newpage(); grid.draw(Figure5b)
 grid.newpage(); grid.draw(Figure5c)
 
@@ -105,6 +105,8 @@ save_source_data(cbind(ms_coords, ps[rownames(ms_coords), setdiff(colnames(ps), 
 
 ##### Figure 5d: gene trends along pseudotime (MAGIC-imputed)
 ```{r, fig.width = 12, fig.height = 9}
+# fates in the colour of their cancer AOIs
+fate_colours <- c("EC" = Category_Group[["Endometrioid carcinoma - Cancer"]], "CCC" = Category_Group[["Clear cell carcinoma - Cancer"]])
 mye_small <- Palantir.Magic(mye_small)
 
 genes <- c("SOX9", "AXIN2", "DKK1", "DKK4",
@@ -113,7 +115,7 @@ genes <- c("SOX9", "AXIN2", "DKK1", "DKK4",
            "MUC5B", "PAEP", "LCN2")
 
 Figure5d <- GeneTrendCurve.Palantir(mye_small, features = genes, point = FALSE, ncol = 4, line.size = 2, magic = TRUE) +
-  scale_color_manual(values = c("EC" = "#A73030FF", "CCC" = "#3B3B3BFF")) +
+  scale_color_manual(values = fate_colours) +
   theme(legend.position = "inside", legend.position.inside = c(7, 1) / 8) + trend_text    # in the empty 16th cell of the 4 x 4 grid
 Figure5d
 
@@ -132,7 +134,7 @@ seurat_score@meta.data[, score_names] <- seurat_score@meta.data[, paste0("cell_s
 
 Figure5e <- GeneTrendCurve.Palantir(seurat_score, line.size = 2, features = score_names, method = "smooth",
                                     point = FALSE, ncol = 2, magic = FALSE) +
-  scale_color_manual(values = c("EC" = "#A73030FF", "CCC" = "#3B3B3BFF")) +
+  scale_color_manual(values = fate_colours) +
   facet_wrap(~ Gene, ncol = 2, scales = "free", labeller = labeller(Gene = function(x) gsub("_", " ", x))) +  # "Steroid receptors"
   theme(legend.position = "inside", legend.position.inside = c(3 / 4, 1 / 6)) + trend_text   # in the empty 6th cell of the 2 x 3 grid
 Figure5e

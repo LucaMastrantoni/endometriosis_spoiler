@@ -1,6 +1,6 @@
 ---
 title: "18_DGE_CD3"
-subtitle: "CD3+ AOIs of endometriosis: CLE vs SE and CLE vs AE (Supplementary Figure 8)"
+subtitle: "CD3+ AOIs of endometriosis: ECLE vs SE and ECLE vs AE (Supplementary Figure 8)"
 author: "Luca Mastrantoni"
 output: html_document
 ---
@@ -14,7 +14,7 @@ source("Setup.R")
 
 ```{r}
 spe_ruv <- readRDS(file.path(path_rds, "spe_ruv.rds"))
-endometriosis <- c("Simple endometriosis", "Atypical endometriosis", "Cancer-like endometriosis")
+endometriosis <- c("Simple endometriosis", "Atypical endometriosis", "Endometriosis CLE")
 
 keep <- spe_ruv$Segment == "CD3" & spe_ruv$Category %in% endometriosis
 spe_sub <- spe_ruv[, keep]
@@ -25,16 +25,16 @@ dge <- spe_to_dge(spe_ruv)[, keep]
 ```{r}
 design <- model.matrix(~0 + Category + ruv_W1 + ruv_W2 + ruv_W3, data = colData(spe_sub)) %>%
   tidy_design("Category")
-contr.matrix <- makeContrasts(CLE_SE = Cancer_like_endometriosis - Simple_endometriosis,
-                              AE_CLE = Cancer_like_endometriosis - Atypical_endometriosis,
+contr.matrix <- makeContrasts(ECLE_SE = Endometriosis_CLE - Simple_endometriosis,
+                              ECLE_AE = Endometriosis_CLE - Atypical_endometriosis,
                               levels = colnames(design))
 
 # CD3+ AOIs have fewer reads: genes need at least 5 counts in the smallest group
 efit <- fit_dge(dge, design, contr.matrix, block = factor(colData(spe_sub)$Patient), min.count = 5)$efit
 
-topTable_CLE_SE <- top_table(efit, "CLE_SE")
-topTable_AE_CLE <- top_table(efit, "AE_CLE")
-save_tables(list(CD3_CLE_SE = topTable_CLE_SE, CD3_CLE_AE = topTable_AE_CLE), "SupplementaryFigureS8.xlsx")
+topTable_ECLE_SE <- top_table(efit, "ECLE_SE")
+topTable_ECLE_AE <- top_table(efit, "ECLE_AE")
+save_tables(list(CD3_ECLE_SE = topTable_ECLE_SE, CD3_ECLE_AE = topTable_ECLE_AE), "SupplementaryFigureS8.xlsx")
 ```
 
 ##### Supplementary Figure 8
@@ -44,12 +44,12 @@ tcell_genes <- c("CD4", "CD8A", "CCL5", "GZMA", "IL7R", "CCR7", "CTLA4", "CD274"
                  "HLA-B", "GBP5", "CD52", "TRBC1", "CTSW")
 always <- c("CD4", "CD8A")
 
-v1 <- plot_volcano(topTable_CLE_SE, union(sig_genes_in(topTable_CLE_SE, tcell_genes, fc = 0.56), always),
-                   col_low = "#20854EFF", col_high = "#EFC000FF", xlim = c(-4, 4), ylim = c(0, 6),
-                   fc_dashed = NULL, left = "SE", right = "CLE", caption_x = 2.8, caption_y = 5.2, max_overlaps = 500)
-v2 <- plot_volcano(topTable_AE_CLE, union(sig_genes_in(topTable_AE_CLE, tcell_genes, fc = 0.56), always),
-                   col_low = "#0073C2FF", col_high = "#EFC000FF", xlim = c(-4, 4), ylim = c(0, 6),
-                   fc_dashed = NULL, left = "AE", right = "CLE", caption_x = 2.8, caption_y = 5.2)
+v1 <- plot_volcano(topTable_ECLE_SE, union(sig_genes_in(topTable_ECLE_SE, tcell_genes, fc = 0.56), always),
+                   col_low = Category[["Simple endometriosis"]], col_high = Category[["Endometriosis CLE"]], xlim = c(-4, 4), ylim = c(0, 6),
+                   fc_dashed = NULL, left = "SE", right = "ECLE", caption_x = 2.8, caption_y = 5.2, max_overlaps = 500)
+v2 <- plot_volcano(topTable_ECLE_AE, union(sig_genes_in(topTable_ECLE_AE, tcell_genes, fc = 0.56), always),
+                   col_low = Category[["Atypical endometriosis"]], col_high = Category[["Endometriosis CLE"]], xlim = c(-4, 4), ylim = c(0, 6),
+                   fc_dashed = NULL, left = "AE", right = "ECLE", caption_x = 2.8, caption_y = 5.2)
 # same size, letters and captions as Supplementary Figure 5
 FigureS8 <- v1 + v2 + plot_annotation(tag_levels = "a") & theme(plot.tag = element_text(face = "bold", size = letter_size(15)))
 FigureS8

@@ -18,7 +18,7 @@ PanCK_seurat <- readRDS(file.path(path_rds, "PanCK_seurat.rds"))
 pca_data_sub <- Embeddings(PanCK_seurat, "pca") %>%
   as.data.frame() %>%
   rename(PC1 = PC_1, PC2 = PC_2, PC3 = PC_3) %>%
-  mutate(Category = PanCK_seurat$Category, Segment = PanCK_seurat$Segment,
+  mutate(Category = order_category(PanCK_seurat$Category), Segment = PanCK_seurat$Segment,   # SE first: also the reference of Supp Table 4
          Group = PanCK_seurat$Group, Patient = PanCK_seurat$Patient)
 
 stdev <- Stdev(PanCK_seurat, reduction = "pca")
@@ -85,7 +85,7 @@ cor.mat <- cor(demoSeurat@assays$RNA$scale.data[, panck], method = "pearson", us
 range(cor.mat)
 
 # Fixed colour scale shared by the heatmap and its legend (white = no correlation)
-corr_col <- colorRamp2(c(-0.5, 0, 1), c("#2166ac", "#f7f7f7", "#b2182b"))
+corr_col <- colorRamp2(c(-0.5, 0, 1), c(div_low, div_mid, div_high))
 
 top_ha <- HeatmapAnnotation(df = meta_seg[, c("Category", "Segment", "Group")],
                             col = list(Category = Category, Segment = Segment, Group = Group),

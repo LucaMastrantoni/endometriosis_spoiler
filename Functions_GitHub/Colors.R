@@ -1,72 +1,110 @@
 # Colour palettes shared by the notebooks. Sourced by Setup.R.
+# One muted family built around the ECLE ochre (#C99A4E); every palette is listed in the order the
+# categories are shown (SE, ECLE, AE, CCC, EC), and the expression and significance gradients share the
+# navy-white-brick scale of Figure 6e.
 
-Segment <- c("CD3" = "#E64B35FF",
-             "CD68" = "#F0AB00FF",
-             "PanCK" = "#00A087FF")
+# ---- Gradients -----------------------------------------------------------------
+navy  <- "#003C67"
+brick <- "#A73030"
+div_low <- navy; div_mid <- "white"; div_high <- brick   # log2 FC, correlation, scaled expression
 
-Category <- c("Atypical endometriosis" = "#0073C2FF",
-              "Cancer-like endometriosis" = "#EFC000FF",
-              "Clear cell carcinoma" = "#868686FF",
-              "Endometrioid carcinoma" = "#CD534CFF",
-              "Simple endometriosis" = "#20854EFF")
+# Diverging scale (heatmaps of scaled expression)
+color <- colorRampPalette(c(div_low, div_mid, div_high))(100)
+# Sequential scales: warm (pseudotime, detection rate) and cool (entropy, deconvolution heatmaps)
+seq_warm <- c("#F6EDD9", "#C99A4E", brick, "#3B1E1A")
+seq_cool <- c("#EEF2F6", "#87AFD4", "#4C7DAF", navy)
+# n ordered steps of the warm scale (clustering resolutions, Supplementary Figure 4a-b)
+warm_steps <- function(n) colorRampPalette(c("#EBD5A8", "#D98C5F", brick))(n)
+# GSEA dot plots (enrichplot): adjusted p from terracotta (low) to steel blue (high); lighter than brick-navy,
+# whose dark mid-tones made the gradient hard to read
+options(enrichplot.colours = c("#B85A4E", "#4C7DAF"))
 
-Group <- c("Atypical Epithelial" = "#00A1D5FF",
-           "Cancer" = "#B24745FF",
-           "Epithelial" = "#79AF97FF",
-           "Stroma" = "#DF8F44FF")
+# ---- Categories ----------------------------------------------------------------
+Category <- c("Simple endometriosis"   = "#4F8A5B",
+              "Endometriosis CLE"      = "#C99A4E",
+              "Atypical endometriosis" = "#4C7DAF",
+              "Clear cell carcinoma"   = "#8A8A8A",
+              "Endometrioid carcinoma" = "#B85A4E")
 
-Patient <- c(
-  "Pt_01" = "#AEC6CF",  # pastel blue
-  "Pt_02" = "#FFB347",  # pastel orange
-  "Pt_03" = "#FFD1DC",  # pastel pink
-  "Pt_04" = "#77DD77",  # pastel green
-  "Pt_05" = "#CBAACB",  # pastel lavender
-  "Pt_06" = "#FF6961",  # pastel red
-  "Pt_07" = "#FDFD96",  # pastel yellow
-  "Pt_08" = "#B39EB5",  # pastel purple
-  "Pt_09" = "#779ECB",  # pastel denim
-  "Pt_10" = "#FFB7CE",  # soft pink
-  "Pt_11" = "#B0E0E6",  # powder blue
-  "Pt_12" = "#F49AC2",  # rose pink
-  "Pt_13" = "#E6E6FA",  # lavender
-  "Pt_14" = "#D6CADD"   # dusty mauve
-)
+# Short labels, in the same order
+Category_short <- c("Simple endometriosis" = "SE", "Endometriosis CLE" = "ECLE", "Atypical endometriosis" = "AE",
+                    "Clear cell carcinoma" = "CCC", "Endometrioid carcinoma" = "EC")
+Category_abbr <- setNames(Category, Category_short)   # colours by short label (SE, ECLE, ...)
 
 Category_Group <-
-  c("Atypical endometriosis - Epithelial" = "#0073C2FF",
-    "Atypical endometriosis - Atypical Epithelial" = "#00A1D5FF",
-    "Cancer-like endometriosis - Epithelial" = "#EFC000FF",
-    "Clear cell carcinoma - Epithelial" = "#868686FF",
-    "Clear cell carcinoma - Cancer" = "#3B3B3BFF",
-    "Endometrioid carcinoma - Epithelial" = "#CD534CFF",
-    "Endometrioid carcinoma - Cancer" = "#A73030FF",
-    "Simple endometriosis - Epithelial" = "#20854EFF")
+  c("Simple endometriosis - Epithelial"            = "#4F8A5B",
+    "Endometriosis CLE - Epithelial"               = "#C99A4E",
+    "Atypical endometriosis - Epithelial"          = "#4C7DAF",
+    "Atypical endometriosis - Atypical Epithelial" = "#87AFD4",
+    "Clear cell carcinoma - Epithelial"            = "#8A8A8A",
+    "Clear cell carcinoma - Cancer"                = "#4A4744",
+    "Endometrioid carcinoma - Epithelial"          = "#B85A4E",
+    "Endometrioid carcinoma - Cancer"              = "#8A3A31")
+
+Group <- c("Epithelial"          = "#8DB39B",
+           "Atypical Epithelial" = "#87AFD4",
+           "Cancer"              = "#9E4A42",
+           "Stroma"              = "#9C7BA5")
+
+Segment <- c("CD3"   = "#C8553D",
+             "CD68"  = "#E0B33A",
+             "PanCK" = "#2E9C83")
+
+# Light tints of the same family, one per patient
+Patient <- c(
+  "Pt_01" = "#A8C1DC",  # light steel blue
+  "Pt_02" = "#EDB99A",  # light terracotta
+  "Pt_03" = "#E7C3CF",  # dusty rose
+  "Pt_04" = "#A9C6A0",  # sage
+  "Pt_05" = "#C3B1CC",  # light plum
+  "Pt_06" = "#DDA59D",  # light brick
+  "Pt_07" = "#E4C990",  # light ochre
+  "Pt_08" = "#B9A9B8",  # mauve grey
+  "Pt_09" = "#9FB4C7",  # grey blue
+  "Pt_10" = "#F0D2C4",  # pale peach
+  "Pt_11" = "#9ECFC2",  # light teal
+  "Pt_12" = "#D8CFA0",  # khaki
+  "Pt_13" = "#D9DDE4",  # pale grey blue
+  "Pt_14" = "#C9C9C9"   # light grey
+)
 
 # Alluvial plot (Figure 1b): patients, categories, segments and groups
 Alluvial <- c(Patient, Category, Segment, Group)
 
 # Clusters and categories (Supplementary Figure 4)
 Cluster <- c(
-  "0" = "#FBB4AE",
-  "1" = "#B3CDE3",
-  "2" = "#CCEBC5",
-  "3" = "#DECBE4",
-  "4" = "#FED9A6",
+  "0" = "#DDA59D",
+  "1" = "#A8C1DC",
+  "2" = "#A9C6A0",
+  "3" = "#C3B1CC",
+  "4" = "#E4C990",
   Category
 )
 
-# Diverging blue-white-red scale
-color <- colorRampPalette(c("#2166ac", "#f7f7f7", "#b2182b"))(100)
+# Qualitative set for unordered groups without a palette of their own (scans, K = 3/5 clusters)
+Muted <- c("#4C7DAF", "#B85A4E", "#4F8A5B", "#C99A4E", "#9C7BA5", "#2E9C83", "#8A8A8A", "#D98C5F")
+
+# Q3 counts and negative-probe background (Supplementary Figure 2)
+QC_stat <- c("Q3" = "#D9A08F", "NegProbe" = "#87AFD4")
 
 # Deconvolution cell types
-Cell_Types <- c(
-  "T Cells (CD4)"        = "#00A1D5FF",
-  "T Cells (CD8)"        = "#CD534CFF",
-  "T Reg"                = "#3B3B3BFF"
-)
+Cell_Types <- c("T Cells (CD4)" = "#87AFD4",
+                "T Cells (CD8)" = "#B85A4E",
+                "T Reg"         = "#4A4744")
 
-Macro <- c("LYVE1" = "#F0AB00FF",
-           "Peritoneal" = "#00A1D5FF",
-           "APOE" = "#3B3B3BFF",
-           "Infiltrated" = "#A73030FF",
-           "Activated" = "#79AF97FF")
+Macro <- c("LYVE1"       = "#E0B33A",
+           "Peritoneal"  = "#87AFD4",
+           "APOE"        = "#4A4744",
+           "Infiltrated" = "#8A3A31",
+           "Activated"   = "#8DB39B")
+
+# GO network (Figure 7d): term nodes in the ECLE colour
+GO_term_node <- Category[["Endometriosis CLE"]]
+
+# ---- Order ---------------------------------------------------------------------
+# Factor in the display order of a palette (values not in the palette keep their order, after it)
+in_order <- function(x, palette) {
+  x <- as.character(x)
+  factor(x, levels = c(intersect(names(palette), x), setdiff(unique(x), names(palette))))
+}
+order_category <- function(x) in_order(x, Category)

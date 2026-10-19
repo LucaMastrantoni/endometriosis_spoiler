@@ -20,11 +20,12 @@ umap_data <- Embeddings(PanCK_seurat, "umap") %>%
   as.data.frame() %>%
   rename(UMAP1 = umap_1, UMAP2 = umap_2) %>%
   mutate(Category_Group = paste0(PanCK_seurat$Category, " - ", PanCK_seurat$Group),
-         # SE and CLE have epithelium only: named by the category, as in Figure 4c-e (AE keeps its two groups)
-         Category_Group = dplyr::recode(Category_Group, "Cancer-like endometriosis - Epithelial" = "Cancer-like endometriosis",
+         # SE and ECLE have epithelium only: named by the category, as in Figure 4c-e (AE keeps its two groups)
+         Category_Group = dplyr::recode(Category_Group, "Endometriosis CLE - Epithelial" = "Endometriosis CLE",
                                         "Simple endometriosis - Epithelial" = "Simple endometriosis"))
-Category_Group_4a <- c(Category_Group, "Cancer-like endometriosis" = Category_Group[["Cancer-like endometriosis - Epithelial"]],
-                       "Simple endometriosis" = Category_Group[["Simple endometriosis - Epithelial"]])
+# palette with the SE and ECLE groups renamed, in the same (display) order
+Category_Group_4a <- setNames(Category_Group, sub("^(Simple endometriosis|Endometriosis CLE) - Epithelial$", "\\1", names(Category_Group)))
+umap_data$Category_Group <- in_order(umap_data$Category_Group, Category_Group_4a)
 
 # Short axis arrows (20% of each range) in the bottom-left corner
 x_range <- range(umap_data$UMAP1)
@@ -67,7 +68,7 @@ spe_sub <- spe_ruv[, keep]
 dge <- spe_to_dge(spe_ruv)[, keep]
 
 category_group <- paste0(spe_sub$Category, "_", gsub("Atypical Epithelial", "Epithelial", spe_sub$Group))
-colData(spe_sub)$Category_Group <- gsub("^(Atypical endometriosis|Cancer-like endometriosis|Simple endometriosis)_Epithelial$",
+colData(spe_sub)$Category_Group <- gsub("^(Atypical endometriosis|Endometriosis CLE|Simple endometriosis)_Epithelial$",
                                         "\\1", category_group)
 table(colData(spe_sub)$Category_Group)
 ```
@@ -120,12 +121,13 @@ stopifnot(all(colnames(contr.matrix) %in% names(group_labels)), all(group_labels
 
 # The endometriosis groups have epithelium only (AE pools epithelial and atypical epithelial AOIs):
 # in Figure 4c-e they are labelled by the category alone, in the colour of their epithelium
-endo_labels <- c("Atypical endometriosis - Epithelial" = "Atypical endometriosis",
-                 "Cancer-like endometriosis - Epithelial" = "Cancer-like endometriosis",
-                 "Simple endometriosis - Epithelial" = "Simple endometriosis")
+endo_labels <- c("Simple endometriosis - Epithelial" = "Simple endometriosis",
+                 "Endometriosis CLE - Epithelial" = "Endometriosis CLE",
+                 "Atypical endometriosis - Epithelial" = "Atypical endometriosis")
 short_group <- function(x) ifelse(x %in% names(endo_labels), endo_labels[x], x)
 group_labels <- setNames(short_group(group_labels), names(group_labels))
-Category_Group_4 <- c(Category_Group, setNames(Category_Group[names(endo_labels)], endo_labels))
+# palette with the endometriosis groups renamed, in the same (display) order
+Category_Group_4 <- setNames(Category_Group, short_group(names(Category_Group)))
 
 all_markers_df <- bind_rows(lapply(names(all_tables), function(coef) {
   df <- all_tables[[coef]]
@@ -142,7 +144,8 @@ df2 <- all_markers_df %>%
   mutate(Function = program_of(Gene),
          Gene = factor(Gene, levels = unique(Gene[order(Function, Gene)])),
          Function = factor(Function, levels = names(epithelial_programs))) %>%
-  subset(Function != "Other")
+  subset(Function != "Other") %>%
+  mutate(Category = factor(Category, levels = rev(intersect(names(Category_Group_4), levels(Category)))))   # SE in the top row
 ```
 
 ```{r, fig.width = 13, fig.height = 4.2}
@@ -150,7 +153,7 @@ dotplot_top <- ggplot(df2, aes(x = Gene, y = Category, fill = logFC, size = log1
   geom_point(shape = 21, color = ifelse(df2$adj.P.Val < 0.05, "black", "NA")) +
   scale_size(range = c(0.5, 3.5)) +  # smaller dots, so neighbouring genes do not overlap
   theme_classic() +
-  scale_fill_gradient2(low = "#2166ac", mid = "#f7f7f7", high = "#b2182b", midpoint = 0, name = expression(log[2]*" FC")) +
+  scale_fill_gradient2(low = div_low, mid = div_mid, high = div_high, midpoint = 0, name = expression(log[2]*" FC")) +
   labs(x = NULL, y = NULL, size = expression(-log[10](q~value))) +
   facet_grid(. ~ Function, scales = "free_x", space = "free_x") +
   theme(strip.placement = "outside",
@@ -192,8 +195,8 @@ save_source_data(list(Selected_genes = dplyr::select(df2, Gene, Function, Catego
 ```{r, fig.width = 8.2, fig.height = 5}
 expr_scaled <- t(scale(t(res$vobj$E[rownames(res$vobj$E) %in% df2$Gene, ])))
 
-annotation_col <- data.frame(Category = dge$samples$Category,
-                             Group = dge$samples$Group)
+annotation_col <- data.frame(Category = order_category(dge$samples$Category),
+                             Group = in_order(dge$samples$Group, Group))
 rownames(annotation_col) <- colnames(expr_scaled)
 
 Figure4b <- pheatmap(expr_scaled,
@@ -253,7 +256,7 @@ umap_panels <- function(long_df, value_name, facet, box_ncol, box_legend = FALSE
   umap <- ggplot(long_df, aes(x = UMAP1, y = UMAP2)) +
     geom_point(shape = 21, size = 3, stroke = 1.5, fill = "white", color = "black") +
     geom_point(aes(color = Expression), shape = 16, size = 3) +
-    scale_color_gradientn(colors = c("#2166ac", "#f7f7f7", "#b2182b"),
+    scale_color_gradientn(colors = c(div_low, div_mid, div_high),
                           values = scales::rescale(c(vmin, 0, vmax)),
                           limits = c(vmin, vmax),
                           name = "Expression") +
@@ -283,7 +286,7 @@ umap_panels <- function(long_df, value_name, facet, box_ncol, box_legend = FALSE
 }
 
 genes <- c("PGR", "ESR1",        # SE
-           "MUC5B", "PAEP",      # CLE
+           "MUC5B", "PAEP",      # ECLE
            "LEFTY1", "PTHLH",    # CCC
            "DKK1", "DKK4")       # EC
 
@@ -291,7 +294,7 @@ plot_data_long <- FetchData(aux.seurat, vars = c("umap_1", "umap_2", genes, "Cat
   rownames_to_column("AOI") %>%
   pivot_longer(cols = all_of(genes), names_to = "Gene", values_to = "Expression") %>%
   rename(UMAP1 = umap_1, UMAP2 = umap_2) %>%
-  mutate(Gene = factor(Gene, levels = genes))
+  mutate(Gene = factor(Gene, levels = genes), Category_Group = in_order(Category_Group, Category_Group_4))
 
 panels <- umap_panels(plot_data_long, "Expression", "Gene", box_ncol = length(genes))
 Figure4d <- plot_grid(panels$umap, panels$box, ncol = 1, nrow = 2, align = "hv", axis = "tblr")
@@ -311,7 +314,7 @@ plot_score_long <- FetchData(aux.seurat, vars = c("umap_1", "umap_2", scores, "C
   rownames_to_column("AOI") %>%
   pivot_longer(cols = all_of(scores), names_to = "Score", values_to = "Expression") %>%
   rename(UMAP1 = umap_1, UMAP2 = umap_2) %>%
-  mutate(Score = names(module_genes)[match(Score, scores)])
+  mutate(Score = names(module_genes)[match(Score, scores)], Category_Group = in_order(Category_Group, Category_Group_4))
 
 panels <- umap_panels(plot_score_long, "Expression", "Score", box_ncol = 5, box_legend = TRUE)
 Figure4e <- plot_grid(panels$umap, panels$box, ncol = 1, nrow = 2, align = "hv", axis = "tblr")

@@ -1,6 +1,6 @@
 ---
 title: "16_DGE_CD68"
-subtitle: "CD68+ AOIs of endometriosis: CLE vs SE and CLE vs AE (Figure 6a-b)"
+subtitle: "CD68+ AOIs of endometriosis: ECLE vs SE and ECLE vs AE (Figure 6a-b)"
 author: "Luca Mastrantoni"
 output: html_document
 ---
@@ -14,7 +14,7 @@ source("Setup.R")
 
 ```{r}
 spe_ruv <- readRDS(file.path(path_rds, "spe_ruv.rds"))
-endometriosis <- c("Simple endometriosis", "Atypical endometriosis", "Cancer-like endometriosis")
+endometriosis <- c("Simple endometriosis", "Atypical endometriosis", "Endometriosis CLE")
 
 keep <- spe_ruv$Segment == "CD68" & spe_ruv$Category %in% endometriosis
 spe_sub <- spe_ruv[, keep]
@@ -25,15 +25,15 @@ dge <- spe_to_dge(spe_ruv)[, keep]
 ```{r}
 design <- model.matrix(~0 + Category + ruv_W1 + ruv_W2 + ruv_W3, data = colData(spe_sub)) %>%
   tidy_design("Category")
-contr.matrix <- makeContrasts(CLE_SE = Cancer_like_endometriosis - Simple_endometriosis,
-                              AE_CLE = Cancer_like_endometriosis - Atypical_endometriosis,
+contr.matrix <- makeContrasts(ECLE_SE = Endometriosis_CLE - Simple_endometriosis,
+                              ECLE_AE = Endometriosis_CLE - Atypical_endometriosis,
                               levels = colnames(design))
 
 efit <- fit_dge(dge, design, contr.matrix, block = factor(colData(spe_sub)$Patient))$efit
 
-topTable_CLE_SE <- top_table(efit, "CLE_SE")
-topTable_AE_CLE <- top_table(efit, "AE_CLE")
-save_tables(list(CD68_CLE_SE = topTable_CLE_SE, CD68_CLE_AE = topTable_AE_CLE), "Figure6ab.xlsx")
+topTable_ECLE_SE <- top_table(efit, "ECLE_SE")
+topTable_ECLE_AE <- top_table(efit, "ECLE_AE")
+save_tables(list(CD68_ECLE_SE = topTable_ECLE_SE, CD68_ECLE_AE = topTable_ECLE_AE), "Figure6ab.xlsx")
 ```
 
 ##### Figure 6a-b
@@ -44,14 +44,14 @@ macrophage_genes <- c("CD68", "CD163", "CD14", "CSF1R", "FOLR2", "APOE", "HMOX1"
                       "CD115", "CD206", "PPARG", "ARG1", "CD163", "CD301", "PDL2",
                       "PDGFRA", "MFAP4")
 
-v1 <- plot_volcano(topTable_CLE_SE, sig_genes_in(topTable_CLE_SE, macrophage_genes, fdr = 0.2, fc = 0.56),
-                   col_low = "#20854EFF", col_high = "#EFC000FF", xlim = c(-8, 8), ylim = c(0, 8),
+v1 <- plot_volcano(topTable_ECLE_SE, sig_genes_in(topTable_ECLE_SE, macrophage_genes, fdr = 0.2, fc = 0.56),
+                   col_low = Category[["Simple endometriosis"]], col_high = Category[["Endometriosis CLE"]], xlim = c(-8, 8), ylim = c(0, 8),
                    caption_x = 5.5, caption_y = 7, print_scale = 380 / 619,   # 8.6 in printed 380 pt wide
-                   left = "SE", right = "CLE")
-v2 <- plot_volcano(topTable_AE_CLE, sig_genes_in(topTable_AE_CLE, macrophage_genes, fdr = 0.2, fc = 0.56),
-                   col_low = "#0073C2FF", col_high = "#EFC000FF", xlim = c(-8, 8), ylim = c(0, 8),
+                   left = "SE", right = "ECLE")
+v2 <- plot_volcano(topTable_ECLE_AE, sig_genes_in(topTable_ECLE_AE, macrophage_genes, fdr = 0.2, fc = 0.56),
+                   col_low = Category[["Atypical endometriosis"]], col_high = Category[["Endometriosis CLE"]], xlim = c(-8, 8), ylim = c(0, 8),
                    caption_x = 5.5, caption_y = 7, print_scale = 380 / 619,   # 8.6 in printed 380 pt wide
-                   left = "AE", right = "CLE")
+                   left = "AE", right = "ECLE")
 Figure6ab <- v1 + plot_spacer() + v2 + plot_layout(widths = c(1, 0.15, 1))  # gap between a and b
 Figure6ab
 
