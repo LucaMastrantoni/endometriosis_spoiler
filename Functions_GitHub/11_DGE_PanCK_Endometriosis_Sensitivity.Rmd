@@ -5,7 +5,7 @@ author: "Luca Mastrantoni"
 output: html_document
 ---
 
-Input: `OUTPUT/rds/spe_ruv.rds` (03), `DATA_INPUT/unique_pt_public.xlsx`
+Input: `OUTPUT/rds/spe_ruv.rds` (03), `DATA_INPUT/clinical/clinical_public.xlsx`
 Output: Supp. Fig. 5 (FigureS5, S5a-S5b) in `OUTPUT/FIGURES/Supplementary/FigureS5` and `OUTPUT/Excel Files/Supplementary/FigureS5`
 
 ```{r setup, message=FALSE}
@@ -16,7 +16,7 @@ source("Setup.R")
 spe_ruv <- readRDS(file.path(path_rds, "spe_ruv.rds"))
 
 # Patient-level covariates
-patients <- read_xlsx(file.path(path_input, "unique_pt_public.xlsx"))
+patients <- read_xlsx(file.path(path_input, "clinical", "clinical_public.xlsx"))
 idx <- match(as.character(spe_ruv$Patient), patients$Patient)
 spe_ruv$Menstrual <- patients$Menstrual[idx]
 spe_ruv$COC <- patients$COC[idx]

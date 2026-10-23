@@ -5,7 +5,7 @@ author: "Luca Mastrantoni"
 output: html_document
 ---
 
-Input: `OUTPUT/rds/spe_ruv.rds` (03), `DATA_INPUT/clinical.xlsx`, `DATA_INPUT/IHC_public.xlsx`
+Input: `OUTPUT/rds/spe_ruv.rds` (03), `DATA_INPUT/IHC/IHC_public.xlsx` (sheets Fig1d, Table_S3B)
 Output: Figure1b-1d in `OUTPUT/FIGURES/Main/Figure1` and `OUTPUT/Excel Files/Main/Figure1`; `OUTPUT/TABLES/Study_Summary.xlsx`, `OUTPUT/TABLES/SupplementaryTable3B.xlsx`
 
 ```{r setup, message=FALSE}
@@ -103,7 +103,7 @@ save_source_data(list(Segment = mutate(tab_seg, Percent = 100 * Count / ave(Coun
 
 ##### Figure 1d
 ```{r, fig.width = 7.2, fig.height = 2.25}
-clinical <- read_xlsx(file.path(path_input, "clinical.xlsx"))
+clinical <- read_xlsx(file.path(path_input, "IHC", "IHC_public.xlsx"), sheet = "Fig1d")
 
 clinical <- subset(clinical, !(Marker %in% c("PD1", "PD-L1 CPS", "PD-L1 TPS"))) %>%
   mutate(Marker = factor(Marker, levels = c("PD-L1 IRS Epithelium", "PD-L1 IRS Stroma", "CD3", "CD4", "CD8", "CD68")),
@@ -129,7 +129,7 @@ save_source_data(dplyr::select(clinical, Category, Marker, Value), "Figure1d")
 ##### Supplementary Table 3B
 ```{r}
 # Mismatch repair proteins, ER, PR and β-catenin, one row per patient
-ihc <- read_xlsx(file.path(path_input, "IHC_public.xlsx"))
+ihc <- read_xlsx(file.path(path_input, "IHC", "IHC_public.xlsx"), sheet = "Table_S3B")
 ihc
 
 save_tables(ihc, "SupplementaryTable3B.xlsx", rownames_to = NULL)
