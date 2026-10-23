@@ -60,3 +60,7 @@ Notebooks 01-05 build the objects used by the others. Results are written to
 | 20_DGE_Bulk_ECLE | All AOIs, ECLE vs SE + AE | Fig. 7a-d |
 | 21_Opal | Multiplex immunofluorescence | Fig. 8b, 8e |
 | 22_Source_Data | All source data | `Source_Data.xlsx` |
+
+## License
+
+Code released under the MIT License (see `LICENSE`).
